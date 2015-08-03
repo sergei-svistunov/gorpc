@@ -6,6 +6,7 @@ use warnings;
 use FindBin qw($Bin);
 use File::Find;
 use MIME::Base64;
+use IO::Compress::Gzip;
 
 my $data = '';
 find(
@@ -17,10 +18,18 @@ find(
 			s/^${Bin}\/html//;
 			$_ = "/$_" unless /^\//;
 
+			my $content;
+			my $z = IO::Compress::Gzip->new(\$content, "-Level" => 9)
+			  || die "IO::Compress::Gzip failed: $IO::Compress::Gzip::GzipError\n";
+
 			open(my $fh, '<', $fn) || die "Cannot open $fn: $!";
 			binmode($fh);
-			my $content = join('', <$fh>);
+			my $fileContent = join('', <$fh>);
 			close($fh);
+
+			$z->print($fileContent);
+			$z->close();
+
 			$data .= qq{"$_": `} . encode_base64($content) . qq{`,} . "\n";
 		},
 		no_chdir => 1,

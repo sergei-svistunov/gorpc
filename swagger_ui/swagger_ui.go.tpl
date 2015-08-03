@@ -31,6 +31,7 @@ func (h *SwaggerUIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", mime.TypeByExtension(fileName[strings.LastIndex(fileName, "."):]))
+	w.Header().Set("Content-Encoding", "gzip")
 
 	content, _ := base64.StdEncoding.DecodeString(file)
 	w.Write(content)
