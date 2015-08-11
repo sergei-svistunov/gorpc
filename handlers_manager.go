@@ -22,18 +22,20 @@ type handlerEntity struct {
 }
 
 type HandlersManager struct {
-	handlers     map[string]*handlerEntity
-	handlersPath string
-	cache        ICache
-	cacheTTL     time.Duration
+	handlers        map[string]*handlerEntity
+	handlerVersions map[string]*handlerVersion
+	handlersPath    string
+	cache           ICache
+	cacheTTL        time.Duration
 }
 
 func NewHandlersManager(handlersPath string, cache ICache, cacheTTL time.Duration) *HandlersManager {
 	return &HandlersManager{
-		handlers:     make(map[string]*handlerEntity),
-		handlersPath: strings.TrimSuffix(handlersPath, "/"),
-		cache:        cache,
-		cacheTTL:     cacheTTL,
+		handlers:        make(map[string]*handlerEntity),
+		handlerVersions: make(map[string]*handlerVersion),
+		handlersPath:    strings.TrimSuffix(handlersPath, "/"),
+		cache:           cache,
+		cacheTTL:        cacheTTL,
 	}
 }
 
@@ -106,6 +108,9 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		version.path = handlerPath
 		version.method = vMethodType
 		version.handlerStruct = h
+
+		route := fmt.Sprintf("%s/%s/", handlerPath, version.Version)
+		hm.handlerVersions[route] = version
 
 		if _, ok := handlerType.MethodByName("V" + strconv.Itoa(v) + "UseCache"); ok {
 			version.UseCache = true
@@ -202,6 +207,8 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	return nil
 }
 
+// FindHandler returns a handler by given non-versioned path and given version
+// number
 func (hm *HandlersManager) FindHandler(path string, version int) *handlerVersion {
 	handler := hm.getHandlerByPath(path)
 	if handler == nil {
@@ -213,6 +220,12 @@ func (hm *HandlersManager) FindHandler(path string, version int) *handlerVersion
 	}
 
 	return &handler.versions[version-1]
+}
+
+// FindHandlerByRoute returns a handler by fully qualified route to that
+// particular version of the handler
+func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
+	return hm.handlerVersions[route]
 }
 
 func hash(handler *handlerVersion, opts interface{}) ([]byte, error) {

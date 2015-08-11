@@ -4,9 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"net/http"
-	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/sergei-svistunov/gorpc"
@@ -20,30 +18,16 @@ type httpSessionResponse struct {
 }
 
 type APIHandler struct {
-	hm     *gorpc.HandlersManager
-	pathRe *regexp.Regexp
+	hm *gorpc.HandlersManager
 }
 
 func NewAPIHandler(hm *gorpc.HandlersManager) *APIHandler {
-	pathRe := regexp.MustCompile(`^(.+?)/v(\d+)/?$`)
-
 	return &APIHandler{
-		hm:     hm,
-		pathRe: pathRe,
+		hm: hm,
 	}
 }
 
 func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" && req.Method != "GET" {
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-
-		return
-	}
-
-	req.ParseForm()
-
-	path := req.URL.Path
-
 	defer func() {
 		if r := recover(); r != nil {
 			trace := make([]byte, 1024)
@@ -54,14 +38,16 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	matches := h.pathRe.FindStringSubmatch(path)
-	if len(matches) != 3 {
+	if req.Method != "POST" && req.Method != "GET" {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+
 		return
 	}
 
-	handlerPath := matches[1]
-	version, _ := strconv.Atoi(matches[2])
-	handler := h.hm.FindHandler(handlerPath, version)
+	req.ParseForm()
+
+	path := req.URL.Path
+	handler := h.hm.FindHandlerByRoute(path)
 
 	if handler == nil {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)

@@ -59,3 +59,21 @@ func (s *HttpJSONSute) TestHttpJSON_CallWithoutRequiredArguments_BadRequest() {
 	s.NoError(err)
 	s.Equal(400, resp.StatusCode)
 }
+
+// Benchmarks
+func BenchmarkHttpJSON_CallWithRequiredArguments_Success(b *testing.B) {
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", &TestCache{}, 0)
+	if err := hm.RegisterHandler(test_handler1.NewHandler()); err != nil {
+		b.Fatal(err.Error())
+	}
+
+	handler := NewAPIHandler(hm)
+	request, _ := http.NewRequest("GET", "/test/handler1/v1/?req_int=123", nil)
+	recorder := httptest.NewRecorder()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		handler.ServeHTTP(recorder, request)
+	}
+}
