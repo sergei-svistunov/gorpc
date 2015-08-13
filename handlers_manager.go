@@ -21,21 +21,26 @@ type handlerEntity struct {
 	handlerStruct IHandler
 }
 
+type HandlersManagerCallbacks struct {
+}
+
 type HandlersManager struct {
 	handlers        map[string]*handlerEntity
 	handlerVersions map[string]*handlerVersion
 	handlersPath    string
 	cache           ICache
 	cacheTTL        time.Duration
+	callbacks       HandlersManagerCallbacks
 }
 
-func NewHandlersManager(handlersPath string, cache ICache, cacheTTL time.Duration) *HandlersManager {
+func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks, cache ICache, cacheTTL time.Duration) *HandlersManager {
 	return &HandlersManager{
 		handlers:        make(map[string]*handlerEntity),
 		handlerVersions: make(map[string]*handlerVersion),
 		handlersPath:    strings.TrimSuffix(handlersPath, "/"),
 		cache:           cache,
 		cacheTTL:        cacheTTL,
+		callbacks:       callbacks,
 	}
 }
 

@@ -1,11 +1,11 @@
 package http_json
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"reflect"
 	"strings"
-	"bytes"
 
 	"github.com/sergei-svistunov/gorpc"
 )
@@ -221,7 +221,7 @@ func typeName(t reflect.Type) (name string) {
 	return
 }
 
-func getOrCreateSchema(definitions definitions, t reflect.Type) (schema) {
+func getOrCreateSchema(definitions definitions, t reflect.Type) schema {
 	var result schema
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()

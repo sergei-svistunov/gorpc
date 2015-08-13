@@ -29,10 +29,10 @@ type HttpJSONSute struct {
 }
 
 func (s *HttpJSONSute) SetupTest() {
-	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", &TestCache{}, 0)
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{}, &TestCache{}, 0)
 	s.NoError(hm.RegisterHandler(test_handler1.NewHandler()))
 
-	s.server = httptest.NewUnstartedServer(NewAPIHandler(hm))
+	s.server = httptest.NewUnstartedServer(NewAPIHandler(hm, APIHandlerCallbacks{}))
 }
 
 func TestRunHttpJSONSute(t *testing.T) {
@@ -62,12 +62,12 @@ func (s *HttpJSONSute) TestHttpJSON_CallWithoutRequiredArguments_BadRequest() {
 
 // Benchmarks
 func BenchmarkHttpJSON_CallWithRequiredArguments_Success(b *testing.B) {
-	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", &TestCache{}, 0)
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{}, &TestCache{}, 0)
 	if err := hm.RegisterHandler(test_handler1.NewHandler()); err != nil {
 		b.Fatal(err.Error())
 	}
 
-	handler := NewAPIHandler(hm)
+	handler := NewAPIHandler(hm, APIHandlerCallbacks{})
 	request, _ := http.NewRequest("GET", "/test/handler1/v1/?req_int=123", nil)
 	recorder := httptest.NewRecorder()
 

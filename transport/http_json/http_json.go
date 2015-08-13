@@ -17,22 +17,36 @@ type httpSessionResponse struct {
 	Error  string      `json:"error"`
 }
 
-type APIHandler struct {
-	hm *gorpc.HandlersManager
+type APIHandlerCallbacks struct {
+	OnInitCtx func(path string) context.Context
+	OnOk      func(ctx context.Context, handlerResponse interface{})
+	OnError   func(ctx context.Context, err error)
+	OnPanic   func(ctx context.Context, r interface{}, trace []byte)
 }
 
-func NewAPIHandler(hm *gorpc.HandlersManager) *APIHandler {
+type APIHandler struct {
+	hm        *gorpc.HandlersManager
+	callbacks APIHandlerCallbacks
+}
+
+func NewAPIHandler(hm *gorpc.HandlersManager, callbacks APIHandlerCallbacks) *APIHandler {
 	return &APIHandler{
 		hm: hm,
 	}
 }
 
 func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var ctx context.Context
+
 	defer func() {
 		if r := recover(); r != nil {
 			trace := make([]byte, 1024)
 			n := runtime.Stack(trace, false)
 			trace = trace[:n]
+
+			if h.callbacks.OnPanic != nil {
+				h.callbacks.OnPanic(ctx, r, trace)
+			}
 
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
@@ -54,14 +68,27 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ctx := context.TODO()
+	if h.callbacks.OnInitCtx != nil {
+		ctx = h.callbacks.OnInitCtx(path)
+	} else {
+		ctx = context.TODO()
+	}
+
 	handlerResponse, err := h.hm.CallHandler(ctx, handler, &ParametersGetter{Req: req})
 
 	var resp httpSessionResponse
 	if err == nil {
+		if h.callbacks.OnOk != nil {
+			h.callbacks.OnOk(ctx, handlerResponse)
+		}
+
 		resp.Result = "OK"
 		resp.Data = handlerResponse
 	} else {
+		if h.callbacks.OnError != nil {
+			h.callbacks.OnError(ctx, err)
+		}
+
 		switch err.Type {
 		case gorpc.ErrorReturnedFromCall:
 			resp.Result = "ERROR"

@@ -185,7 +185,7 @@ type HandlersManagerSuite struct {
 }
 
 func (s *HandlersManagerSuite) SetupTest() {
-	s.hm = NewHandlersManager("github.com/sergei-svistunov/gorpc", &TestCache{}, 0)
+	s.hm = NewHandlersManager("github.com/sergei-svistunov/gorpc", HandlersManagerCallbacks{}, &TestCache{}, 0)
 
 	s.NoError(s.hm.RegisterHandler(test_handler1.NewHandler()))
 }

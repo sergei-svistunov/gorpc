@@ -21,13 +21,13 @@ func (c *DummyCache) Get(key string) (interface{}, bool) {
 func (c *DummyCache) Put(key string, data interface{}, ttl time.Duration) {}
 
 func main() {
-	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", &DummyCache{}, 0)
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{}, &DummyCache{}, 0)
 
 	if err := hm.RegisterHandler(test_handler1.NewHandler()); err != nil {
 		panic(err)
 	}
 
-	http.Handle("/", http_json.NewAPIHandler(hm))
+	http.Handle("/", http_json.NewAPIHandler(hm, http_json.APIHandlerCallbacks{}))
 	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm))
 	http.Handle("/docs/", http.StripPrefix("/docs", swagger_ui.NewSwaggerUIHandler()))
 

@@ -20,7 +20,7 @@ type SwaggerJSONSute struct {
 }
 
 func (s *SwaggerJSONSute) SetupTest() {
-	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", &TestCache{}, 0)
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{}, &TestCache{}, 0)
 	s.NoError(hm.RegisterHandler(test_handler1.NewHandler()))
 
 	s.server = httptest.NewUnstartedServer(NewSwaggerJSONHandler(hm))
