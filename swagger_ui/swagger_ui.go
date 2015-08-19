@@ -14188,6 +14188,7 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	file, exists := h.files[fileName]
 	if !exists || strings.LastIndex(fileName, ".") < 1 {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
 	}
 
 	w.Header().Set("Content-Type", mime.TypeByExtension(fileName[strings.LastIndex(fileName, "."):]))
