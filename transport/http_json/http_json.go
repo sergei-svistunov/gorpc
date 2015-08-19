@@ -129,3 +129,12 @@ func writeResponse(resp *httpSessionResponse, w http.ResponseWriter, req *http.R
 	_, err = w.Write(payload)
 	return err
 }
+
+func (h *APIHandler) CanServe(req *http.Request) bool {
+    path := req.URL.Path
+    handler := h.hm.FindHandlerByRoute(path)
+    if handler == nil {
+        return false
+    }
+    return true
+}
