@@ -45,7 +45,7 @@ type HandlersManager struct {
 }
 
 func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks, cache ICache, cacheTTL time.Duration) *HandlersManager {
-	hm := &HandlersManager{
+	return &HandlersManager{
 		handlers:        make(map[string]*handlerEntity),
 		handlerVersions: make(map[string]*handlerVersion),
 		handlersPath:    strings.TrimSuffix(handlersPath, "/"),
@@ -53,8 +53,6 @@ func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks,
 		cacheTTL:        cacheTTL,
 		callbacks:       callbacks,
 	}
-
-	return hm
 }
 
 func (hm *HandlersManager) RegisterHandler(h IHandler) error {
@@ -295,7 +293,7 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVers
 	methodFunc := handler.method
 
 	optsType := methodFunc.Type.In(2).Elem()
-	params, err := hm.prepareParameters(parameters, handler, optsType)
+	params, err := prepareParameters(parameters, handler, optsType)
 	if err != nil {
 		return nil, &CallHandlerError{ErrorInParameters, err}
 	}
@@ -311,7 +309,7 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVers
 				Err:  err,
 			}
 		}
-		// replace context by updated one in callback
+		// replace context: use updated one in callback
 		in[1] = reflect.ValueOf(ctx)
 
 		// append extra inputs from callback
@@ -391,7 +389,7 @@ func (hm *HandlersManager) getHandlerByPath(path string) *handlerEntity {
 	return hm.handlers[path]
 }
 
-func (hm *HandlersManager) prepareParameters(handlerParameters IHandlerParameters, handlerVersion *handlerVersion, parametersStructType reflect.Type) (reflect.Value, error) {
+func prepareParameters(handlerParameters IHandlerParameters, handlerVersion *handlerVersion, parametersStructType reflect.Type) (reflect.Value, error) {
 	resPtr := reflect.New(parametersStructType)
 	res := resPtr.Elem()
 

@@ -20,14 +20,6 @@ type httpSessionResponse struct {
 }
 
 type APIHandlerCallbacks struct {
-	/*
-		OnInitCtx func(req *http.Request) context.Context
-		OnSuccess func(ctx context.Context, handlerResponse interface{})
-		OnError   func(ctx context.Context, err error)
-		OnPanic   func(ctx context.Context, r interface{}, trace []byte)
-	*/
-
-	// OnInitCtx prepares context for handler (each time for handler call)
 	OnInitCtx             func(req *http.Request) (context.Context, error)
 	OnError               func(ctx context.Context, w http.ResponseWriter, req *http.Request, resp interface{}, err *gorpc.CallHandlerError)
 	OnPanic               func(ctx context.Context, w http.ResponseWriter, r interface{}, trace []byte, req *http.Request)
