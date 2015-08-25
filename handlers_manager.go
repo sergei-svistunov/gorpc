@@ -293,7 +293,7 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVers
 	methodFunc := handler.method
 
 	optsType := methodFunc.Type.In(2).Elem()
-	params, err := prepareParameters(parameters, handler, optsType)
+	params, err := prepareParameters(parameters, handler.Parameters, optsType)
 	if err != nil {
 		return nil, &CallHandlerError{ErrorInParameters, err}
 	}
@@ -389,13 +389,13 @@ func (hm *HandlersManager) getHandlerByPath(path string) *handlerEntity {
 	return hm.handlers[path]
 }
 
-func prepareParameters(handlerParameters IHandlerParameters, handlerVersion *handlerVersion, parametersStructType reflect.Type) (reflect.Value, error) {
+func prepareParameters(handlerParameters IHandlerParameters, parameters []handlerParameter, parametersStructType reflect.Type) (reflect.Value, error) {
 	resPtr := reflect.New(parametersStructType)
 	res := resPtr.Elem()
 
 	existingHandlerMethods := reflect.TypeOf(handlerParameters)
 
-	for _, param := range handlerVersion.Parameters {
+	for _, param := range parameters {
 		if !handlerParameters.IsExists(param.GetKey()) {
 			if param.IsRequired {
 				return reflect.ValueOf(nil), fmt.Errorf("Missed required field '%s'", param.GetKey())

@@ -1,7 +1,6 @@
 package gorpc
 
 import (
-	"net/http"
 	"time"
 )
 
@@ -29,8 +28,6 @@ type IHandlerParameters interface {
 	GetFloat64(string) (float64, error)
 
 	GetStringSlice(string) []string
-
-	GetRequest() *http.Request
 }
 
 type ICache interface {
