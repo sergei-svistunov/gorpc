@@ -96,6 +96,10 @@ func (h *SwaggerJSONHandler) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	w.Write(h.jsonB)
 }
 
+func (h *SwaggerJSONHandler) GetJSON() []byte {
+	return h.jsonB
+}
+
 func generateSwaggerJSON(hm *gorpc.HandlersManager) ([]byte, error) {
 	swagger := swagger{
 		SpecVersion: "2.0",

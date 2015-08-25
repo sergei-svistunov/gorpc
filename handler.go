@@ -15,6 +15,7 @@ type handlerVersion struct {
 	Response      reflect.Type
 	Version       string
 	UseCache      bool
+	ExtraData     interface{}
 	path          string
 	handlerStruct IHandler
 	method        reflect.Method

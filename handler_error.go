@@ -3,6 +3,8 @@ package gorpc
 const (
 	ErrorInParameters = iota
 	ErrorReturnedFromCall
+	ErrorInvalidMethod
+	ErrorWriteResponse
 	ErrorUnknown
 )
 

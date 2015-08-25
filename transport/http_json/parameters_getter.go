@@ -145,6 +145,10 @@ func (pg *ParametersGetter) get(name string) string {
 	return slice[0]
 }
 
+func (pg *ParametersGetter) GetRequest() *http.Request {
+	return pg.Req
+}
+
 func (pg *ParametersGetter) getSlice(name string) []string {
 	pg.parseForm()
 	name = strings.ToLower(name)
