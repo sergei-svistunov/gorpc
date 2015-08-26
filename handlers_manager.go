@@ -22,6 +22,17 @@ type handlerEntity struct {
 }
 
 type HandlersManagerCallbacks struct {
+	// OnHandlerRegistration will be called only one time for each handler version while handler registration is in progress
+	OnHandlerRegistration func(path string, method reflect.Method) (extraData interface{})
+
+	// OnPrepareParams will be called for each handler call just right after input parameters will be prepared in Handler Manager
+	OnPrepareParams func(ctx context.Context, parameters IHandlerParameters, preparedParamsValue, extraData interface{}) (context.Context, []reflect.Value, error)
+
+	// OnError will be called if any error occures while CallHandler() method is in processing
+	OnError func(ctx context.Context, err error)
+
+	// OnSuccess will be called if CallHandler() method is successfully finished
+	OnSuccess func(ctx context.Context, result interface{})
 }
 
 type HandlersManager struct {
@@ -115,6 +126,11 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		version.handlerStruct = h
 
 		route := fmt.Sprintf("%s/%s/", handlerPath, version.Version)
+
+		if callback := hm.callbacks.OnHandlerRegistration; callback != nil {
+			version.ExtraData = callback(route, vMethodType)
+		}
+
 		hm.handlerVersions[route] = version
 
 		if _, ok := handlerType.MethodByName("V" + strconv.Itoa(v) + "UseCache"); ok {
@@ -230,6 +246,9 @@ func (hm *HandlersManager) FindHandler(path string, version int) *handlerVersion
 // FindHandlerByRoute returns a handler by fully qualified route to that
 // particular version of the handler
 func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
+	if !strings.HasSuffix(route, "/") {
+		route += "/"
+	}
 	return hm.handlerVersions[route]
 }
 
@@ -281,6 +300,24 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVers
 
 	in := []reflect.Value{reflect.ValueOf(handler.handlerStruct), reflect.ValueOf(ctx), params}
 
+	if callback := hm.callbacks.OnPrepareParams; callback != nil {
+		var extraIn []reflect.Value
+		ctx, extraIn, err = callback(ctx, parameters, params.Interface(), handler.ExtraData)
+		if err != nil {
+			return nil, &CallHandlerError{
+				Type: ErrorReturnedFromCall,
+				Err:  err,
+			}
+		}
+		// replace context: use updated one in callback
+		in[1] = reflect.ValueOf(ctx)
+
+		// append extra inputs from callback
+		if len(extraIn) > 0 {
+			in = append(in, extraIn...)
+		}
+	}
+
 	paramIf := params.Interface()
 
 	useCache := handler.UseCache && hm.cacheTTL != 0
@@ -302,10 +339,16 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVers
 		if useCache {
 			hm.cacheResponse(cacheKey, val)
 		}
+		if callback := hm.callbacks.OnSuccess; callback != nil {
+			callback(ctx, val)
+		}
 		return val, nil
 	}
 
 	err = out[1].Interface().(error)
+	if callback := hm.callbacks.OnError; callback != nil {
+		callback(ctx, err)
+	}
 
 	switch internalErr := err.(type) {
 	case *HandlerError:
