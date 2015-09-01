@@ -17,7 +17,7 @@ type SwaggerUISute struct {
 }
 
 func (s *SwaggerUISute) SetupTest() {
-	s.server = httptest.NewUnstartedServer(NewSwaggerUIHandler())
+	s.server = httptest.NewUnstartedServer(NewHTTPHandler())
 }
 
 func TestRunSwaggerUISute(t *testing.T) {
