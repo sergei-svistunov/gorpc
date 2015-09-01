@@ -275,9 +275,9 @@ func (hm *HandlersManager) lookupCache(ctx context.Context, t reflect.Type, key 
 			v = ptr.Interface()
 		}
 		return v, true
-	} else {
-		return nil, false
 	}
+
+	return nil, false
 }
 
 func (hm *HandlersManager) cacheResponse(key string, response interface{}) {
