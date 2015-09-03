@@ -204,10 +204,11 @@ func (s *HandlersManagerSuite) TestHandlerManager_FindExistsHandler() {
 }
 
 func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
-	hv := s.hm.FindHandler("/test/handler1", 1)
+	hv1 := s.hm.FindHandler("/test/handler1", 1)
+	hv2 := s.hm.FindHandler("/test/handler1", 2)
 
-	s.Equal("v1", hv.Version)
-	s.True(hv.UseCache)
+	s.Equal("v1", hv1.Version)
+	s.True(hv1.UseCache)
 	s.Equal([]handlerParameter{
 		handlerParameter{
 			Name:        "ReqInt",
@@ -215,9 +216,9 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 			Description: "Required integer argument",
 			Key:         "req_int",
 			IsRequired:  true,
-			RawType:     hv.Parameters[0].RawType,
-			getMethod:   hv.Parameters[0].getMethod,
-			structField: hv.Parameters[0].structField,
+			RawType:     hv1.Parameters[0].RawType,
+			getMethod:   hv1.Parameters[0].getMethod,
+			structField: hv1.Parameters[0].structField,
 		},
 		handlerParameter{
 			Name:        "Int",
@@ -225,11 +226,31 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 			Description: "Unrequired integer argument",
 			Key:         "int",
 			IsRequired:  false,
-			RawType:     hv.Parameters[1].RawType,
-			getMethod:   hv.Parameters[1].getMethod,
-			structField: hv.Parameters[1].structField,
+			RawType:     hv1.Parameters[1].RawType,
+			getMethod:   hv1.Parameters[1].getMethod,
+			structField: hv1.Parameters[1].structField,
 		},
-	}, hv.Parameters)
+	}, hv1.Parameters)
+
+	s.Equal("v2", hv2.Version)
+	s.False(hv2.UseCache)
+	s.Equal([]HandlerError{
+		HandlerError{
+			UserMessage: "Error 1 description",
+			Err:         hv2.Errors[0].Err,
+			Code:        "ERROR_TYPE1",
+		},
+		HandlerError{
+			UserMessage: "Error 2 description",
+			Err:         hv2.Errors[1].Err,
+			Code:        "ERROR_TYPE2",
+		},
+		HandlerError{
+			UserMessage: "Error 3 description",
+			Err:         hv2.Errors[2].Err,
+			Code:        "ERROR_TYPE3",
+		},
+	}, hv2.Errors)
 }
 
 func (s *HandlersManagerSuite) TestHandlerManager_CallHandler1V1_ReturnResult() {

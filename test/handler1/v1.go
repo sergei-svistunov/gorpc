@@ -17,10 +17,8 @@ type V1Res struct {
 func (*Handler) V1UseCache() {}
 
 func (*Handler) V1(ctx context.Context, opts *v1Args) (*V1Res, error) {
-	res := &V1Res{
+	return &V1Res{
 		String: "Test",
 		Int:    opts.ReqInt,
-	}
-
-	return res, nil
+	}, nil
 }
