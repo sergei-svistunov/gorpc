@@ -1,7 +1,6 @@
 package gorpc
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -9,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"golang.org/x/net/context"
@@ -39,18 +37,14 @@ type HandlersManager struct {
 	handlers        map[string]*handlerEntity
 	handlerVersions map[string]*handlerVersion
 	handlersPath    string
-	cache           ICache
-	cacheTTL        time.Duration
 	callbacks       HandlersManagerCallbacks
 }
 
-func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks, cache ICache, cacheTTL time.Duration) *HandlersManager {
+func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks) *HandlersManager {
 	return &HandlersManager{
 		handlers:        make(map[string]*handlerEntity),
 		handlerVersions: make(map[string]*handlerVersion),
 		handlersPath:    strings.TrimSuffix(handlersPath, "/"),
-		cache:           cache,
-		cacheTTL:        cacheTTL,
 		callbacks:       callbacks,
 	}
 }
@@ -252,43 +246,6 @@ func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
 	return hm.handlerVersions[route]
 }
 
-func hash(handler *handlerVersion, opts interface{}) ([]byte, error) {
-	hashStruct := struct {
-		Path    string      `json:"p"`
-		Version string      `json:"v"`
-		Query   interface{} `json:"q,omitempty"`
-	}{
-		Path:    handler.path,
-		Version: handler.Version,
-		Query:   opts,
-	}
-
-	return json.Marshal(&hashStruct)
-}
-
-func (hm *HandlersManager) lookupCache(ctx context.Context, t reflect.Type, key string) (interface{}, bool) {
-	if v, hit := hm.cache.Get(key); hit {
-		if t.Kind() == reflect.Ptr {
-			val := reflect.ValueOf(v)
-			ptr := reflect.New(val.Type())
-			ptr.Elem().Set(val)
-			v = ptr.Interface()
-		}
-		return v, true
-	}
-
-	return nil, false
-}
-
-func (hm *HandlersManager) cacheResponse(key string, response interface{}) {
-	v := response
-	val := reflect.ValueOf(v)
-	if val.Kind() == reflect.Ptr {
-		v = val.Elem().Interface()
-	}
-	hm.cache.Put(key, v, hm.cacheTTL)
-}
-
 func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (interface{}, *CallHandlerError) {
 	methodFunc := handler.method
 
@@ -318,27 +275,10 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVers
 		}
 	}
 
-	paramIf := params.Interface()
-
-	useCache := handler.UseCache && hm.cacheTTL != 0
-	var cacheKey string
-	if useCache {
-		if h, err := hash(handler, paramIf); err == nil {
-			cacheKey = string(h)
-			responseType := methodFunc.Type.Out(0)
-			if val, hit := hm.lookupCache(ctx, responseType, cacheKey); hit {
-				return val, nil
-			}
-		}
-	}
-
 	out := methodFunc.Func.Call(in)
 
 	if out[1].IsNil() {
 		val := out[0].Interface()
-		if useCache {
-			hm.cacheResponse(cacheKey, val)
-		}
 		if callback := hm.callbacks.OnSuccess; callback != nil {
 			callback(ctx, val)
 		}

@@ -4,11 +4,6 @@ import (
 	"reflect"
 )
 
-type IHandler interface {
-	Caption() string
-	Description() string
-}
-
 type handlerVersion struct {
 	Parameters    []handlerParameter
 	Errors        []HandlerError
