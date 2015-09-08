@@ -90,17 +90,30 @@ func (s *HandlersManagerSuite) TestHandlerManager_CallHandler1V1_ReturnResult() 
 			"req_int": []string{"123"},
 		},
 	}
-	res, err := s.hm.CallHandler(context.TODO(), s.hm.FindHandler("/test/handler1", 1), pg)
 
+	hanlerVersion := s.hm.FindHandler("/test/handler1", 1)
+	if hanlerVersion == nil {
+		s.NotNil(hanlerVersion)
+	}
+
+	params, err := s.hm.PrepareParameters(context.TODO(), hanlerVersion, pg)
+	s.NoError(err)
+
+	res, err := s.hm.CallHandler(context.TODO(), hanlerVersion, params)
 	s.NoError(err)
 	s.Equal(&test_handler1.V1Res{"Test", 123}, res)
 }
 
-func (s *HandlersManagerSuite) TestHandlerManager_CallHandler1V1WuthoutReqArg_ReturnError() {
+func (s *HandlersManagerSuite) TestHandlerManager_PrepareParametersWithError() {
 	pg := &ParametersGetter{
 		map[string][]string{},
 	}
-	_, err := s.hm.CallHandler(context.TODO(), s.hm.FindHandler("/test/handler1", 1), pg)
 
+	hanlerVersion := s.hm.FindHandler("/test/handler1", 1)
+	if hanlerVersion == nil {
+		s.NotNil(hanlerVersion)
+	}
+
+	_, err := s.hm.PrepareParameters(context.TODO(), hanlerVersion, pg)
 	s.Error(err)
 }

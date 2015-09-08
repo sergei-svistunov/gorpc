@@ -17,7 +17,7 @@ func main() {
 		panic(err)
 	}
 
-	http.Handle("/", http_json.NewAPIHandler(hm, http_json.APIHandlerCallbacks{}))
+	http.Handle("/", http_json.NewAPIHandler(hm, nil, http_json.APIHandlerCallbacks{}))
 	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm))
 	http.Handle("/docs/", http.StripPrefix("/docs", swagger_ui.NewHTTPHandler()))
 

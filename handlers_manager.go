@@ -23,14 +23,14 @@ type HandlersManagerCallbacks struct {
 	// OnHandlerRegistration will be called only one time for each handler version while handler registration is in progress
 	OnHandlerRegistration func(path string, method reflect.Method) (extraData interface{})
 
-	// OnPrepareParams will be called for each handler call just right after input parameters will be prepared in Handler Manager
-	OnPrepareParams func(ctx context.Context, parameters IHandlerParameters, preparedParamsValue, extraData interface{}) (context.Context, []reflect.Value, error)
-
 	// OnError will be called if any error occures while CallHandler() method is in processing
 	OnError func(ctx context.Context, err error)
 
 	// OnSuccess will be called if CallHandler() method is successfully finished
 	OnSuccess func(ctx context.Context, result interface{})
+
+	// AppendInParams will be called for each handler call and can append extra parameters to params
+	AppendInParams func(ctx context.Context, preparedParams []reflect.Value, extraData interface{}) ([]reflect.Value, error)
 }
 
 type HandlersManager struct {
@@ -246,36 +246,31 @@ func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
 	return hm.handlerVersions[route]
 }
 
-func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (interface{}, *CallHandlerError) {
-	methodFunc := handler.method
-
-	optsType := methodFunc.Type.In(2).Elem()
+func (hm *HandlersManager) PrepareParameters(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (reflect.Value, error) {
+	optsType := handler.method.Type.In(2).Elem()
 	params, err := prepareParameters(parameters, handler.Parameters, optsType)
 	if err != nil {
-		return nil, &CallHandlerError{ErrorInParameters, err}
+		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
 	}
 
+	return params, nil
+}
+
+func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVersion, params reflect.Value) (interface{}, *CallHandlerError) {
 	in := []reflect.Value{reflect.ValueOf(handler.handlerStruct), reflect.ValueOf(ctx), params}
 
-	if callback := hm.callbacks.OnPrepareParams; callback != nil {
-		var extraIn []reflect.Value
-		ctx, extraIn, err = callback(ctx, parameters, params.Interface(), handler.ExtraData)
+	if callback := hm.callbacks.AppendInParams; callback != nil {
+		var err error
+		in, err = callback(ctx, in, handler.ExtraData)
 		if err != nil {
 			return nil, &CallHandlerError{
 				Type: ErrorReturnedFromCall,
 				Err:  err,
 			}
 		}
-		// replace context: use updated one in callback
-		in[1] = reflect.ValueOf(ctx)
-
-		// append extra inputs from callback
-		if len(extraIn) > 0 {
-			in = append(in, extraIn...)
-		}
 	}
 
-	out := methodFunc.Func.Call(in)
+	out := handler.method.Func.Call(in)
 
 	if out[1].IsNil() {
 		val := out[0].Interface()
@@ -285,7 +280,7 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVers
 		return val, nil
 	}
 
-	err = out[1].Interface().(error)
+	err := out[1].Interface().(error)
 	if callback := hm.callbacks.OnError; callback != nil {
 		callback(ctx, err)
 	}
