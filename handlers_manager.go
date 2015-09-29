@@ -1,7 +1,6 @@
 package gorpc
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -9,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"golang.org/x/net/context"
@@ -25,32 +23,28 @@ type HandlersManagerCallbacks struct {
 	// OnHandlerRegistration will be called only one time for each handler version while handler registration is in progress
 	OnHandlerRegistration func(path string, method reflect.Method) (extraData interface{})
 
-	// OnPrepareParams will be called for each handler call just right after input parameters will be prepared in Handler Manager
-	OnPrepareParams func(ctx context.Context, parameters IHandlerParameters, preparedParamsValue, extraData interface{}) (context.Context, []reflect.Value, error)
-
 	// OnError will be called if any error occures while CallHandler() method is in processing
 	OnError func(ctx context.Context, err error)
 
 	// OnSuccess will be called if CallHandler() method is successfully finished
 	OnSuccess func(ctx context.Context, result interface{})
+
+	// AppendInParams will be called for each handler call and can append extra parameters to params
+	AppendInParams func(ctx context.Context, preparedParams []reflect.Value, extraData interface{}) ([]reflect.Value, error)
 }
 
 type HandlersManager struct {
 	handlers        map[string]*handlerEntity
 	handlerVersions map[string]*handlerVersion
 	handlersPath    string
-	cache           ICache
-	cacheTTL        time.Duration
 	callbacks       HandlersManagerCallbacks
 }
 
-func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks, cache ICache, cacheTTL time.Duration) *HandlersManager {
+func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks) *HandlersManager {
 	return &HandlersManager{
 		handlers:        make(map[string]*handlerEntity),
 		handlerVersions: make(map[string]*handlerVersion),
 		handlersPath:    strings.TrimSuffix(handlersPath, "/"),
-		cache:           cache,
-		cacheTTL:        cacheTTL,
 		callbacks:       callbacks,
 	}
 }
@@ -252,100 +246,41 @@ func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
 	return hm.handlerVersions[route]
 }
 
-func hash(handler *handlerVersion, opts interface{}) ([]byte, error) {
-	hashStruct := struct {
-		Path    string      `json:"p"`
-		Version string      `json:"v"`
-		Query   interface{} `json:"q,omitempty"`
-	}{
-		Path:    handler.path,
-		Version: handler.Version,
-		Query:   opts,
-	}
-
-	return json.Marshal(&hashStruct)
-}
-
-func (hm *HandlersManager) lookupCache(ctx context.Context, t reflect.Type, key string) (interface{}, bool) {
-	if v, hit := hm.cache.Get(key); hit {
-		if t.Kind() == reflect.Ptr {
-			val := reflect.ValueOf(v)
-			ptr := reflect.New(val.Type())
-			ptr.Elem().Set(val)
-			v = ptr.Interface()
-		}
-		return v, true
-	}
-
-	return nil, false
-}
-
-func (hm *HandlersManager) cacheResponse(key string, response interface{}) {
-	v := response
-	val := reflect.ValueOf(v)
-	if val.Kind() == reflect.Ptr {
-		v = val.Elem().Interface()
-	}
-	hm.cache.Put(key, v, hm.cacheTTL)
-}
-
-func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (interface{}, *CallHandlerError) {
-	methodFunc := handler.method
-
-	optsType := methodFunc.Type.In(2).Elem()
+func (hm *HandlersManager) PrepareParameters(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (reflect.Value, error) {
+	optsType := handler.method.Type.In(2).Elem()
 	params, err := prepareParameters(parameters, handler.Parameters, optsType)
 	if err != nil {
-		return nil, &CallHandlerError{ErrorInParameters, err}
+		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
 	}
 
+	return params, nil
+}
+
+func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVersion, params reflect.Value) (interface{}, *CallHandlerError) {
 	in := []reflect.Value{reflect.ValueOf(handler.handlerStruct), reflect.ValueOf(ctx), params}
 
-	if callback := hm.callbacks.OnPrepareParams; callback != nil {
-		var extraIn []reflect.Value
-		ctx, extraIn, err = callback(ctx, parameters, params.Interface(), handler.ExtraData)
+	if callback := hm.callbacks.AppendInParams; callback != nil {
+		var err error
+		in, err = callback(ctx, in, handler.ExtraData)
 		if err != nil {
 			return nil, &CallHandlerError{
 				Type: ErrorReturnedFromCall,
 				Err:  err,
 			}
 		}
-		// replace context: use updated one in callback
-		in[1] = reflect.ValueOf(ctx)
-
-		// append extra inputs from callback
-		if len(extraIn) > 0 {
-			in = append(in, extraIn...)
-		}
 	}
 
-	paramIf := params.Interface()
-
-	useCache := handler.UseCache && hm.cacheTTL != 0
-	var cacheKey string
-	if useCache {
-		if h, err := hash(handler, paramIf); err == nil {
-			cacheKey = string(h)
-			responseType := methodFunc.Type.Out(0)
-			if val, hit := hm.lookupCache(ctx, responseType, cacheKey); hit {
-				return val, nil
-			}
-		}
-	}
-
-	out := methodFunc.Func.Call(in)
+	out := handler.method.Func.Call(in)
 
 	if out[1].IsNil() {
 		val := out[0].Interface()
-		if useCache {
-			hm.cacheResponse(cacheKey, val)
-		}
 		if callback := hm.callbacks.OnSuccess; callback != nil {
 			callback(ctx, val)
 		}
 		return val, nil
 	}
 
-	err = out[1].Interface().(error)
+	err := out[1].Interface().(error)
 	if callback := hm.callbacks.OnError; callback != nil {
 		callback(ctx, err)
 	}

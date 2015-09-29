@@ -1,8 +1,9 @@
 package gorpc
 
-import (
-	"time"
-)
+type IHandler interface {
+	Caption() string
+	Description() string
+}
 
 type IHandlerParameters interface {
 	IsExists(string) bool
@@ -28,9 +29,4 @@ type IHandlerParameters interface {
 	GetFloat64(string) (float64, error)
 
 	GetStringSlice(string) []string
-}
-
-type ICache interface {
-	Get(key string) (interface{}, bool)
-	Put(key string, data interface{}, ttl time.Duration)
 }

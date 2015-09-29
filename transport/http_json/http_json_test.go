@@ -4,22 +4,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/sergei-svistunov/gorpc"
 	"github.com/stretchr/testify/suite"
 
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
 )
-
-//  Cache implementation
-type TestCache struct{}
-
-func (c *TestCache) Get(key string) (interface{}, bool) {
-	return nil, false
-}
-
-func (c *TestCache) Put(key string, data interface{}, ttl time.Duration) {}
 
 // Suite
 type HttpJSONSute struct {
@@ -29,10 +19,10 @@ type HttpJSONSute struct {
 }
 
 func (s *HttpJSONSute) SetupTest() {
-	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{}, &TestCache{}, 0)
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{})
 	s.NoError(hm.RegisterHandler(test_handler1.NewHandler()))
 
-	s.server = httptest.NewUnstartedServer(NewAPIHandler(hm, APIHandlerCallbacks{}))
+	s.server = httptest.NewUnstartedServer(NewAPIHandler(hm, &testCache{}, APIHandlerCallbacks{}))
 }
 
 func TestRunHttpJSONSute(t *testing.T) {
@@ -62,12 +52,12 @@ func (s *HttpJSONSute) TestHttpJSON_CallWithoutRequiredArguments_BadRequest() {
 
 // Benchmarks
 func BenchmarkHttpJSON_CallWithRequiredArguments_Success(b *testing.B) {
-	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{}, &TestCache{}, 0)
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{})
 	if err := hm.RegisterHandler(test_handler1.NewHandler()); err != nil {
 		b.Fatal(err.Error())
 	}
 
-	handler := NewAPIHandler(hm, APIHandlerCallbacks{})
+	handler := NewAPIHandler(hm, &testCache{},APIHandlerCallbacks{})
 	request, _ := http.NewRequest("GET", "/test/handler1/v1/?req_int=123", nil)
 	recorder := httptest.NewRecorder()
 
