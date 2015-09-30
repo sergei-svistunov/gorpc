@@ -193,7 +193,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		gzip.NewWriter(buf).Write(cacheEntry.Content)
 	}
 
-	if cacheKey != nil {
+	if h.cache != nil && cacheKey != nil {
 		h.cache.Put(cacheKey, cacheEntry)
 	}
 
