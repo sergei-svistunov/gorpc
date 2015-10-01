@@ -12,7 +12,7 @@ import (
 
 type swagger struct {
 	SpecVersion string              `json:"swagger"`
-	Info        info                `json:"info"`
+	Info        Info                `json:"info"`
 	BasePath    string              `json:"basePath"`
 	Host        string              `json:"host,omitempty"`
 	Schemes     []string            `json:"schemes,omitempty"`
@@ -23,15 +23,15 @@ type swagger struct {
 	Definitions definitions         `json:"definitions,omitempty"`
 }
 
-type info struct {
+type Info struct {
 	Version     string `json:"version"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 }
 
-type pathItem map[string]operation
+type pathItem map[string]Operation
 
-type operation struct {
+type Operation struct {
 	Tags        []string    `json:"tags,omitempty"`
 	Summary     string      `json:"summary"`
 	Description string      `json:"description"`
@@ -39,6 +39,7 @@ type operation struct {
 	Produces    []string    `json:"produces,omitempty"`
 	Parameters  []parameter `json:"parameters,omitempty"`
 	Responses   responses   `json:"responses,omitempty"`
+	ExtraData   interface{} `json:"-"`
 }
 
 type parameter struct {
@@ -81,8 +82,14 @@ type SwaggerJSONHandler struct {
 	jsonB []byte
 }
 
-func NewSwaggerJSONHandler(hm *gorpc.HandlersManager) *SwaggerJSONHandler {
-	jsonB, err := generateSwaggerJSON(hm)
+// SwaggerJSONCallbacks is struct for callbacks describing
+type SwaggerJSONCallbacks struct {
+	OnPrepareBaseInfoJSON func(info *Info)
+	OnPrepareHandlerJSON  func(path string, data *Operation)
+}
+
+func NewSwaggerJSONHandler(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbacks) *SwaggerJSONHandler {
+	jsonB, err := generateSwaggerJSON(hm, callbacks)
 	if err != nil {
 		panic(err)
 	}
@@ -100,10 +107,10 @@ func (h *SwaggerJSONHandler) GetJSON() []byte {
 	return h.jsonB
 }
 
-func generateSwaggerJSON(hm *gorpc.HandlersManager) ([]byte, error) {
+func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbacks) ([]byte, error) {
 	swagger := swagger{
 		SpecVersion: "2.0",
-		Info: info{
+		Info: Info{
 			Version: "1.0.0",
 			Title:   "HTTP JSON RPC for Go",
 			Description: `<h2>Description</h2>
@@ -129,17 +136,22 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager) ([]byte, error) {
 		Definitions: definitions{},
 	}
 
+	if callbacks.OnPrepareBaseInfoJSON != nil {
+		callbacks.OnPrepareBaseInfoJSON(&swagger.Info)
+	}
+
 	for _, path := range hm.GetHandlersPaths() {
 		info := hm.GetHandlerInfo(path)
 		tagName := strings.Split(path, "/")[1]
 		swagger.Tags = append(swagger.Tags, tag{Name: tagName})
 
 		for _, v := range info.Versions {
-			operation := operation{
+			operation := Operation{
 				Summary:     info.Caption,
 				Description: info.Description,
 				Produces:    []string{"application/json"},
 				Tags:        []string{tagName},
+				ExtraData:   v.ExtraData,
 			}
 
 			if v.UseCache {
@@ -190,6 +202,10 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager) ([]byte, error) {
 						Schema:      getOrCreateSchema(swagger.Definitions, v.Response),
 					},
 				}
+			}
+
+			if callbacks.OnPrepareHandlerJSON != nil {
+				callbacks.OnPrepareHandlerJSON(path, &operation)
 			}
 
 			swagger.Paths[path+"/"+v.Version+"/"] = pathItem{
