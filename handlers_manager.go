@@ -30,7 +30,7 @@ type HandlersManagerCallbacks struct {
 	OnSuccess func(ctx context.Context, result interface{})
 
 	// AppendInParams will be called for each handler call and can append extra parameters to params
-	AppendInParams func(ctx context.Context, preparedParams []reflect.Value, extraData interface{}) ([]reflect.Value, error)
+	AppendInParams func(ctx context.Context, preparedParams []reflect.Value, extraData interface{}) (context.Context, []reflect.Value, error)
 }
 
 type HandlersManager struct {
@@ -261,7 +261,7 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVers
 
 	if callback := hm.callbacks.AppendInParams; callback != nil {
 		var err error
-		in, err = callback(ctx, in, handler.ExtraData)
+		ctx, in, err = callback(ctx, in, handler.ExtraData)
 		if err != nil {
 			return nil, &CallHandlerError{
 				Type: ErrorReturnedFromCall,
