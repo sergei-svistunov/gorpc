@@ -24,6 +24,8 @@ type APIHandlerCallbacks struct {
 	OnInitCtx             func(req *http.Request) context.Context
 	OnError               func(ctx context.Context, w http.ResponseWriter, req *http.Request, resp interface{}, err *gorpc.CallHandlerError)
 	OnPanic               func(ctx context.Context, w http.ResponseWriter, r interface{}, trace []byte, req *http.Request)
+	OnStartServing        func(req *http.Request)
+	OnEndServing          func(req *http.Request, startTime time.Time)
 	OnBeforeWriteResponse func(ctx context.Context, w http.ResponseWriter)
 	OnSuccess             func(ctx context.Context, req *http.Request, handlerResponse interface{}, startTime time.Time)
 	On404                 func(ctx context.Context, req *http.Request)
@@ -50,7 +52,15 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	startTime := time.Now()
 	ctx := context.Background()
 
+	if h.callbacks.OnStartServing != nil {
+		h.callbacks.OnStartServing(req)
+	}
+
 	defer func() {
+		if h.callbacks.OnEndServing != nil {
+			h.callbacks.OnEndServing(req, startTime)
+		}
+
 		if r := recover(); r != nil {
 			trace := make([]byte, 1024)
 			n := runtime.Stack(trace, false)
