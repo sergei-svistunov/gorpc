@@ -20,7 +20,7 @@ func (hi *handlerInfo) String() string {
 		res += fmt.Sprintf("\t\t%d:\n\t\t\tParameters:\n", vN+1)
 		for _, parameter := range version.Parameters {
 			res += fmt.Sprintf("\t\t\t\t%s:\n\t\t\t\t\tType: %s\n\t\t\t\t\tDescription: %s\n\t\t\t\t\tIs required: %t\n",
-				parameter.Name, parameter.Type, parameter.Description, parameter.IsRequired)
+				parameter.Name, parameter.RawType.Kind().String(), parameter.Description, parameter.IsRequired)
 		}
 	}
 

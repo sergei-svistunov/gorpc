@@ -1,6 +1,7 @@
 package gorpc
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -95,14 +96,14 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return fmt.Errorf("You have missed version number %d of handler %s", handlerVersion, handlerPath)
 		}
 
-		vMethodType, _ := handlerType.MethodByName("V" + strconv.Itoa(v))
+		handlerMethodPrefix := "V" + strconv.Itoa(v)
+		vMethodType, _ := handlerType.MethodByName(handlerMethodPrefix)
 		numIn := vMethodType.Type.NumIn()
 		if numIn != 3 && numIn != 4 {
 			return fmt.Errorf("Invalid prototype for version number %d of handler %s", handlerVersion, handlerPath)
 		}
 
 		ctxType := vMethodType.Type.In(1)
-
 		if ctxType.Kind() != reflect.Interface || ctxType.PkgPath() != "golang.org/x/net/context" || ctxType.Name() != "Context" {
 			return fmt.Errorf("Invalid prototype for version number %d of handler %s. First argument must be \"Context\" from package \"golang.org/x/net/context\"", handlerVersion, handlerPath)
 		}
@@ -114,7 +115,6 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 
 		version := &versions[i]
 		version.Version = "v" + strconv.Itoa(v)
-		version.Parameters = make([]handlerParameter, paramsType.Elem().NumField())
 		version.path = handlerPath
 		version.method = vMethodType
 		version.handlerStruct = h
@@ -127,9 +127,8 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 
 		hm.handlerVersions[route] = version
 
-		if _, ok := handlerType.MethodByName("V" + strconv.Itoa(v) + "UseCache"); ok {
-			version.UseCache = true
-		}
+		_, version.UseCache = handlerType.MethodByName(handlerMethodPrefix + "UseCache")
+		_, version.AcceptJSON = handlerType.MethodByName(handlerMethodPrefix + "AcceptJSON")
 
 		if vMethodType.Type.NumOut() != 2 {
 			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)}
@@ -142,48 +141,53 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		for pN, parameter := range version.Parameters {
-			fieldType := paramsType.Elem().Field(pN)
-
-			parameter.Key = fieldType.Tag.Get("key")
-			if parameter.Key == "" || parameter.Key == "-" {
-				return fmt.Errorf("tag \"key\" must be specified for parameter %q (handler %s, version number %d)", fieldType.Name, handlerPath, handlerVersion)
+		if version.AcceptJSON {
+			param := handlerParameter{
+				IsRequired:  true,
+				Description: "",
+				RawType:     paramsType,
 			}
+			version.Parameters = []handlerParameter{param}
+		} else {
+			version.Parameters = make([]handlerParameter, paramsType.Elem().NumField())
+			for pN, parameter := range version.Parameters {
+				fieldType := paramsType.Elem().Field(pN)
 
-			parameter.Name = fieldType.Name
-			if unicode.IsLower(rune(fieldType.Name[0])) {
-				return fmt.Errorf("Parameters field %s is private (handler %s, version number %d)", parameter.Name, handlerPath, handlerVersion)
+				parameter.Key = fieldType.Tag.Get("key")
+				if parameter.Key == "" || parameter.Key == "-" {
+					return fmt.Errorf("tag \"key\" must be specified for parameter %q (handler %s, version number %d)", fieldType.Name, handlerPath, handlerVersion)
+				}
+
+				parameter.Name = fieldType.Name
+				if unicode.IsLower(rune(fieldType.Name[0])) {
+					return fmt.Errorf("Parameters field %s is private (handler %s, version number %d)", parameter.Name, handlerPath, handlerVersion)
+				}
+
+				parameter.RawType = fieldType.Type
+
+				paramGetMethod, exist := findParameterGetMethod(existingHandlerMethods, fieldType.Type)
+				if !exist {
+					return fmt.Errorf("Type %s does not supported by handler %s for version number %d", fieldType.Type.Kind().String(), handlerPath, handlerVersion)
+				}
+				parameter.getMethod = paramGetMethod
+				parameter.structField = fieldType
+
+				parameter.Description = fieldType.Tag.Get("description")
+				if parameter.Description == "" {
+					return fmt.Errorf("Opt %s of handler %s for version number %d does not have description", fieldType.Name, handlerPath, handlerVersion)
+				}
+				parameter.IsRequired = fieldType.Type.Kind() != reflect.Ptr
+
+				version.Parameters[pN] = parameter
 			}
-
-			parameter.RawType = fieldType.Type
-			if fieldType.Type.Kind() == reflect.Ptr {
-				parameter.Type = fieldType.Type.Elem().Kind().String()
-			} else {
-				parameter.Type = fieldType.Type.Kind().String()
-			}
-
-			paramGetMethod, exist := findParameterGetMethod(existingHandlerMethods, fieldType.Type)
-			if !exist {
-				return fmt.Errorf("Type %s does not supported by handler %s for version number %d", parameter.Type, handlerPath, handlerVersion)
-			}
-			parameter.getMethod = paramGetMethod
-			parameter.structField = fieldType
-
-			parameter.Description = fieldType.Tag.Get("description")
-			if parameter.Description == "" {
-				return fmt.Errorf("Opt %s of handler %s for version number %d does not have description", fieldType.Name, handlerPath, handlerVersion)
-			}
-			parameter.IsRequired = fieldType.Type.Kind() != reflect.Ptr
-
-			version.Parameters[pN] = parameter
 		}
 
 		// check and prepare errors types for handler
-		errMethod, found := handlerType.MethodByName("V" + strconv.Itoa(v) + "ErrorsVar")
+		errMethod, found := handlerType.MethodByName(handlerMethodPrefix + "ErrorsVar")
 		if found {
 			errMethodType := errMethod.Type
 			if errMethodType.NumOut() == 0 {
-				return fmt.Errorf("V%dErrors() method of handler %s should return errors types struct", handlerVersion, handlerPath)
+				return fmt.Errorf("V%dErrorsVar() method of handler %s should return errors types struct", handlerVersion, handlerPath)
 			}
 			retValues := errMethod.Func.Call([]reflect.Value{reflect.ValueOf(h)})
 			errVar := retValues[0].Elem()
@@ -246,13 +250,21 @@ func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
 	return hm.handlerVersions[route]
 }
 
+func (hm *HandlersManager) PrepareJsonParameters(ctx context.Context, handler *handlerVersion, jsonRequest []byte) (reflect.Value, error) {
+	optsType := handler.method.Type.In(2).Elem()
+	resPtr := reflect.New(optsType)
+	if err := json.Unmarshal(jsonRequest, resPtr.Interface()); err != nil {
+		return reflect.ValueOf(nil), err
+	}
+	return resPtr, nil
+}
+
 func (hm *HandlersManager) PrepareParameters(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (reflect.Value, error) {
 	optsType := handler.method.Type.In(2).Elem()
 	params, err := prepareParameters(parameters, handler.Parameters, optsType)
 	if err != nil {
 		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
 	}
-
 	return params, nil
 }
 

@@ -38,11 +38,7 @@ func (pg *ParametersGetter) GetUint(name string) (uint, error) {
 }
 
 func (pg *ParametersGetter) GetByte(name string) (uint8, error) {
-	v, err := strconv.ParseUint(pg.get(name), 0, 8)
-	if err != nil {
-		err = errors.New(`Wrong value of param "` + name + `". It should be Uint`)
-	}
-	return uint8(v), err
+	return pg.GetUint8(name)
 }
 
 func (pg *ParametersGetter) GetUint8(name string) (uint8, error) {

@@ -43,7 +43,6 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 	s.Equal([]handlerParameter{
 		handlerParameter{
 			Name:        "ReqInt",
-			Type:        "int",
 			Description: "Required integer argument",
 			Key:         "req_int",
 			IsRequired:  true,
@@ -53,7 +52,6 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 		},
 		handlerParameter{
 			Name:        "Int",
-			Type:        "int",
 			Description: "Unrequired integer argument",
 			Key:         "int",
 			IsRequired:  false,

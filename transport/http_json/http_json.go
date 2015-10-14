@@ -4,7 +4,10 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"io/ioutil"
+	"log"
 	"net/http"
+	"reflect"
 	"runtime"
 	"strings"
 	"time"
@@ -12,6 +15,7 @@ import (
 	"bytes"
 	"github.com/sergei-svistunov/gorpc"
 	"golang.org/x/net/context"
+	"io"
 )
 
 type httpSessionResponse struct {
@@ -104,8 +108,55 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ctx = h.callbacks.OnInitCtx(req)
 	}
 
-	params, paramsErr := h.hm.PrepareParameters(ctx, handler, &ParametersGetter{Req: req})
+	if req.Method != "POST" && handler.AcceptJSON {
+		if h.callbacks.OnError != nil {
+			err := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorInvalidMethod,
+				Err:  errors.New("Invalid method"),
+			}
+			h.callbacks.OnError(ctx, w, req, nil, err)
+		}
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	jsonRequest := (req.Header.Get("Content-Type") == "application/json")
+	if handler.AcceptJSON != jsonRequest {
+		if h.callbacks.OnError != nil {
+			err := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorInvalidMethod,
+				Err:  errors.New(http.StatusText(http.StatusBadRequest)),
+			}
+			h.callbacks.OnError(ctx, w, req, nil, err)
+		}
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	var params reflect.Value
+	var paramsErr error
+	if jsonRequest {
+		defer req.Body.Close()
+		maxFormSize := int64(10 << 20) // 10 MB is a lot of text.
+		reader := io.LimitReader(req.Body, maxFormSize+1)
+		body, err := ioutil.ReadAll(reader)
+		if err != nil {
+			log.Print(err.Error())
+			http.Error(w, "failed to read body", http.StatusInternalServerError)
+			return
+		}
+		params, paramsErr = h.hm.PrepareJsonParameters(ctx, handler, body)
+	} else {
+		params, paramsErr = h.hm.PrepareParameters(ctx, handler, &ParametersGetter{Req: req})
+	}
 	if paramsErr != nil {
+		if h.callbacks.OnError != nil {
+			grpcErr := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorInParameters,
+				Err:  paramsErr,
+			}
+			h.callbacks.OnError(ctx, w, req, resp, grpcErr)
+		}
 		http.Error(w, paramsErr.Error(), http.StatusBadRequest)
 		return
 	}
@@ -117,6 +168,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		if h.callbacks.GetCacheKey != nil {
 			cacheKey = h.callbacks.GetCacheKey(ctx, req, params.Interface())
 		} else {
+			// TODO: use json from the body?
 			cacheKey, err = json.Marshal(params.Interface())
 			if err != nil {
 				cacheKey = nil

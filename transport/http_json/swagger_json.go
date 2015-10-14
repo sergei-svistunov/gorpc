@@ -10,7 +10,7 @@ import (
 	"github.com/sergei-svistunov/gorpc"
 )
 
-type swagger struct {
+type Swagger struct {
 	SpecVersion string              `json:"swagger"`
 	Info        Info                `json:"info"`
 	BasePath    string              `json:"basePath"`
@@ -18,9 +18,9 @@ type swagger struct {
 	Schemes     []string            `json:"schemes,omitempty"`
 	Consumes    []string            `json:"consumes,omitempty"`
 	Produces    []string            `json:"produces,omitempty"`
-	Paths       map[string]pathItem `json:"paths"`
-	Tags        []tag               `json:"tags,omitempty"`
-	Definitions definitions         `json:"definitions,omitempty"`
+	Paths       map[string]PathItem `json:"paths"`
+	Tags        []Tag               `json:"tags,omitempty"`
+	Definitions Definitions         `json:"definitions,omitempty"`
 }
 
 type Info struct {
@@ -29,7 +29,7 @@ type Info struct {
 	Description string `json:"description"`
 }
 
-type pathItem map[string]Operation
+type PathItem map[string]Operation
 
 type Operation struct {
 	Tags        []string    `json:"tags,omitempty"`
@@ -37,46 +37,51 @@ type Operation struct {
 	Description string      `json:"description"`
 	Consumes    []string    `json:"consumes,omitempty"`
 	Produces    []string    `json:"produces,omitempty"`
-	Parameters  []parameter `json:"parameters,omitempty"`
-	Responses   responses   `json:"responses,omitempty"`
+	Parameters  []Parameter `json:"parameters,omitempty"`
+	Responses   Responses   `json:"responses,omitempty"`
 	ExtraData   interface{} `json:"-"`
 }
 
-type parameter struct {
-	schema
-	Name             string `json:"name"`
-	In               string `json:"in"`
-	Description      string `json:"description"`
-	Required         bool   `json:"required"`
-	CollectionFormat string `json:"collectionFormat,omitempty"`
+type Parameter struct {
+	Schema
+	// used for body parameter (in == "body")
+	BodySchema       *Schema `json:"schema,omitempty"`
+	Name             string  `json:"name"`
+	In               string  `json:"in"`
+	Description      string  `json:"description"`
+	Required         bool    `json:"required"`
+	CollectionFormat string  `json:"collectionFormat,omitempty"`
 }
 
-type tag struct {
+type Tag struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 }
 
-type items struct {
-	schema
+type Items struct {
+	Schema
 }
 
-type responses map[string]response
+type Responses map[string]Response
 
-type response struct {
+type Response struct {
 	Description string `json:"description"`
-	Schema      schema `json:"schema"`
+	Schema      Schema `json:"schema"`
 }
 
-type schema struct {
-	Ref         string                 `json:"$ref,omitempty"`
-	Type        string                 `json:"type,omitempty"`
-	Description string                 `json:"description,omitempty"`
-	Required    []string               `json:"required,omitempty"`
-	Items       interface{}            `json:"items,omitempty"`
-	Properties  map[string]interface{} `json:"properties,omitempty"`
+type Schema struct {
+	Ref                  string      `json:"$ref,omitempty"`
+	Type                 string      `json:"type,omitempty"`
+	Description          string      `json:"description,omitempty"`
+	Required             []string    `json:"required,omitempty"`
+	Items                interface{} `json:"items,omitempty"`
+	Properties           Properties  `json:"properties,omitempty"`
+	AdditionalProperties *Schema     `json:"additionalProperties,omitempty"`
 }
 
-type definitions map[string]interface{}
+type Properties map[string]Schema
+
+type Definitions map[string]interface{}
 
 type SwaggerJSONHandler struct {
 	jsonB []byte
@@ -86,6 +91,7 @@ type SwaggerJSONHandler struct {
 type SwaggerJSONCallbacks struct {
 	OnPrepareBaseInfoJSON func(info *Info)
 	OnPrepareHandlerJSON  func(path string, data *Operation)
+	Process               func(swagger *Swagger)
 }
 
 func NewSwaggerJSONHandler(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbacks) *SwaggerJSONHandler {
@@ -108,7 +114,7 @@ func (h *SwaggerJSONHandler) GetJSON() []byte {
 }
 
 func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbacks) ([]byte, error) {
-	swagger := swagger{
+	swagger := &Swagger{
 		SpecVersion: "2.0",
 		Info: Info{
 			Version: "1.0.0",
@@ -132,8 +138,8 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 		BasePath:    "/",
 		Consumes:    []string{"application/json"},
 		Produces:    []string{"application/json"},
-		Paths:       map[string]pathItem{},
-		Definitions: definitions{},
+		Paths:       map[string]PathItem{},
+		Definitions: Definitions{},
 	}
 
 	if callbacks.OnPrepareBaseInfoJSON != nil {
@@ -143,7 +149,7 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 	for _, path := range hm.GetHandlersPaths() {
 		info := hm.GetHandlerInfo(path)
 		tagName := strings.Split(path, "/")[1]
-		swagger.Tags = append(swagger.Tags, tag{Name: tagName})
+		swagger.Tags = append(swagger.Tags, Tag{Name: tagName})
 
 		for _, v := range info.Versions {
 			operation := Operation{
@@ -158,25 +164,40 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 				operation.Description += ".<br/>Handler caches response."
 			}
 
-			for _, p := range v.Parameters {
-				p.Type = typeName(p.RawType)
-				var arrayType string
-				if p.Type == "array" {
-					arrayType = typeName(p.RawType.Elem())
-				}
-
-				param := parameter{
-					Name:        p.GetKey(),
+			if v.AcceptJSON {
+				p := v.Parameters[0]
+				bodySchema := getOrCreateSchema(swagger.Definitions, p.RawType)
+				param := Parameter{
+					Name:        "body",
 					Description: p.Description,
-					In:          "query",
+					In:          "body",
 					Required:    p.IsRequired,
-					schema:      schema{Type: p.Type},
+					BodySchema:  &bodySchema,
 				}
-				if arrayType != "" {
-					param.CollectionFormat = "multi"
-					param.Items = items{schema{Type: arrayType}}
-				}
+				operation.Consumes = []string{"application/json"}
 				operation.Parameters = append(operation.Parameters, param)
+
+			} else {
+				for _, p := range v.Parameters {
+					paramType := typeName(p.RawType)
+					var arrayType string
+					if paramType == "array" {
+						arrayType = typeName(p.RawType.Elem())
+					}
+
+					param := Parameter{
+						Name:        p.GetKey(),
+						Description: p.Description,
+						In:          "query",
+						Required:    p.IsRequired,
+						Schema:      Schema{Type: paramType},
+					}
+					if arrayType != "" {
+						param.CollectionFormat = "multi"
+						param.Items = Items{Schema{Type: arrayType}}
+					}
+					operation.Parameters = append(operation.Parameters, param)
+				}
 			}
 
 			if len(v.Errors) > 0 {
@@ -196,8 +217,8 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 			}
 
 			if v.Response != nil {
-				operation.Responses = responses{
-					"200": response{
+				operation.Responses = Responses{
+					"200": Response{
 						Description: "Successful result",
 						Schema:      getOrCreateSchema(swagger.Definitions, v.Response),
 					},
@@ -208,10 +229,20 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 				callbacks.OnPrepareHandlerJSON(path, &operation)
 			}
 
-			swagger.Paths[path+"/"+v.Version+"/"] = pathItem{
-				"get": operation,
+			var method string
+			if v.AcceptJSON {
+				method = "post"
+			} else {
+				method = "get"
+			}
+			swagger.Paths[path+"/"+v.Version+"/"] = PathItem{
+				method: operation,
 			}
 		}
+	}
+
+	if callbacks.Process != nil {
+		callbacks.Process(swagger)
 	}
 
 	return json.Marshal(swagger)
@@ -241,13 +272,23 @@ func typeName(t reflect.Type) (name string) {
 	return
 }
 
-func getOrCreateSchema(definitions definitions, t reflect.Type) schema {
-	var result schema
+func getOrCreateSchema(definitions Definitions, t reflect.Type) Schema {
+	var result Schema
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	// TODO: fix it, interfaces and maps are not supported yet.
-	if t.Kind() == reflect.Interface || t.Kind() == reflect.Map {
+
+	if t.Kind() == reflect.Map {
+		if t.Key().Kind() != reflect.String {
+			panic("swagger supports only maps with string keys")
+		}
+		result.Type = "object"
+		additionalProperties := getOrCreateSchema(definitions, t.Elem())
+		result.AdditionalProperties = &additionalProperties
+		return result
+	}
+
+	if t.Kind() == reflect.Interface {
 		result.Type = "object"
 		return result
 	}
@@ -256,13 +297,13 @@ func getOrCreateSchema(definitions definitions, t reflect.Type) schema {
 	if result.Type == "object" {
 		name := t.String()
 		if _, ok := definitions[name]; ok {
-			result = schema{Ref: "#/definitions/" + name}
+			result = Schema{Ref: "#/definitions/" + name}
 			return result
 		}
 		definitions[name] = result
 
 		if t.NumField() > 0 {
-			result.Properties = make(map[string]interface{})
+			result.Properties = Properties{}
 		}
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
@@ -281,10 +322,10 @@ func getOrCreateSchema(definitions definitions, t reflect.Type) schema {
 			result.Properties[name] = fieldSchema
 		}
 		definitions[name] = result
-		result = schema{Ref: "#/definitions/" + name}
+		result = Schema{Ref: "#/definitions/" + name}
 	} else if result.Type == "array" {
 		itemsSchema := getOrCreateSchema(definitions, t.Elem())
-		result.Items = items{itemsSchema}
+		result.Items = Items{itemsSchema}
 	}
 
 	return result
