@@ -165,20 +165,19 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 			}
 
 			if v.AcceptJSON {
-				p := v.Parameters[0]
-				bodySchema := getOrCreateSchema(swagger.Definitions, p.RawType)
+				bodySchema := getOrCreateSchema(swagger.Definitions, v.Request.Type)
 				param := Parameter{
 					Name:        "body",
-					Description: p.Description,
+					Description: "Body",
 					In:          "body",
-					Required:    p.IsRequired,
+					Required:    true,
 					BodySchema:  &bodySchema,
 				}
 				operation.Consumes = []string{"application/json"}
 				operation.Parameters = append(operation.Parameters, param)
 
 			} else {
-				for _, p := range v.Parameters {
+				for _, p := range v.Request.Fields {
 					paramType := typeName(p.RawType)
 					var arrayType string
 					if paramType == "array" {

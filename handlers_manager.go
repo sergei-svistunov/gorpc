@@ -1,7 +1,6 @@
 package gorpc
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -138,48 +137,20 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Second output parameter should be error (handler %s version number %d)", handlerPath, handlerVersion)}
 		}
 
+		version.Request = handlerRequest{
+			Type: paramsType,
+			Flat: !version.AcceptJSON,
+		}
+		if version.Request.Type.Kind() == reflect.Ptr {
+			version.Request.Type = version.Request.Type.Elem()
+		}
+
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		if version.AcceptJSON {
-			param := handlerParameter{
-				IsRequired:  true,
-				Description: "",
-				RawType:     paramsType,
-			}
-			version.Parameters = []handlerParameter{param}
-		} else {
-			version.Parameters = make([]handlerParameter, paramsType.Elem().NumField())
-			for pN, parameter := range version.Parameters {
-				fieldType := paramsType.Elem().Field(pN)
-
-				parameter.Key = fieldType.Tag.Get("key")
-				if parameter.Key == "" || parameter.Key == "-" {
-					return fmt.Errorf("tag \"key\" must be specified for parameter %q (handler %s, version number %d)", fieldType.Name, handlerPath, handlerVersion)
-				}
-
-				parameter.Name = fieldType.Name
-				if unicode.IsLower(rune(fieldType.Name[0])) {
-					return fmt.Errorf("Parameters field %s is private (handler %s, version number %d)", parameter.Name, handlerPath, handlerVersion)
-				}
-
-				parameter.RawType = fieldType.Type
-
-				paramGetMethod, exist := findParameterGetMethod(existingHandlerMethods, fieldType.Type)
-				if !exist {
-					return fmt.Errorf("Type %s does not supported by handler %s for version number %d", fieldType.Type.Kind().String(), handlerPath, handlerVersion)
-				}
-				parameter.getMethod = paramGetMethod
-				parameter.structField = fieldType
-
-				parameter.Description = fieldType.Tag.Get("description")
-				if parameter.Description == "" {
-					return fmt.Errorf("Opt %s of handler %s for version number %d does not have description", fieldType.Name, handlerPath, handlerVersion)
-				}
-				parameter.IsRequired = fieldType.Type.Kind() != reflect.Ptr
-
-				version.Parameters[pN] = parameter
-			}
+		err := processParameters(&version.Request, existingHandlerMethods)
+		if err != nil {
+			return fmt.Errorf("%s (handler %s, version number %d)", err.Error(), handlerPath, handlerVersion)
 		}
 
 		// check and prepare errors types for handler
@@ -226,6 +197,83 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	return nil
 }
 
+func processParameters(request *handlerRequest, existingHandlerMethods reflect.Type) error {
+	params, err := processParamFields(request.Type, existingHandlerMethods, nil, request.Flat)
+	if err != nil {
+		return err
+	}
+	request.Fields = params
+	return nil
+}
+
+func processParamFields(fieldType, existingHandlerMethods reflect.Type, path []string, flat bool) ([]handlerParameter, error) {
+	var parameters []handlerParameter
+	if fieldType.Kind() == reflect.Ptr {
+		fieldType = fieldType.Elem()
+	}
+	for i := 0; i < fieldType.NumField(); i++ {
+		fieldType := fieldType.Field(i)
+		parameter := handlerParameter{}
+
+		if !flat {
+			parameter.Key = fieldType.Tag.Get("json")
+			parameter.Path = path
+		} else {
+			parameter.Key = fieldType.Tag.Get("key")
+		}
+		if parameter.Key == "" || parameter.Key == "-" {
+			return nil, fmt.Errorf("tag \"key\" or \"json\" must be specified for parameter %q", fieldType.Name)
+		}
+
+		parameter.Name = fieldType.Name
+		if unicode.IsLower(rune(fieldType.Name[0])) {
+			return nil, fmt.Errorf("Parameters field %s is private", parameter.Name)
+		}
+
+		parameter.RawType = fieldType.Type
+
+		t := fieldType.Type
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+
+		if t.Kind() != reflect.Struct {
+			paramGetMethod, exist := findParameterGetMethod(existingHandlerMethods, fieldType.Type)
+			if !exist {
+				return nil, fmt.Errorf("Type %s does not supported", fieldType.Type.Kind().String())
+			}
+			parameter.getMethod = paramGetMethod
+		}
+		parameter.structField = fieldType
+
+		parameter.Description = fieldType.Tag.Get("description")
+		if parameter.Description == "" {
+			return nil, fmt.Errorf("Opt %s does not have description", fieldType.Name)
+		}
+		parameter.IsRequired = fieldType.Type.Kind() != reflect.Ptr
+
+		if t.Kind() == reflect.Struct {
+			if flat {
+				return nil, fmt.Errorf("Deep nesting not supported in flat parameters", fieldType.Name)
+			}
+
+			var path []string
+			if len(parameter.Path) > 0 {
+				path = append(path, parameter.Path...)
+			}
+			path = append(path, parameter.Key)
+			var err error
+			parameter.Fields, err = processParamFields(t, existingHandlerMethods, path, false)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		parameters = append(parameters, parameter)
+	}
+	return parameters, nil
+}
+
 // FindHandler returns a handler by given non-versioned path and given version
 // number
 func (hm *HandlersManager) FindHandler(path string, version int) *handlerVersion {
@@ -250,22 +298,17 @@ func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
 	return hm.handlerVersions[route]
 }
 
-func (hm *HandlersManager) PrepareJsonParameters(ctx context.Context, handler *handlerVersion, jsonRequest []byte) (reflect.Value, error) {
-	optsType := handler.method.Type.In(2).Elem()
-	resPtr := reflect.New(optsType)
-	if err := json.Unmarshal(jsonRequest, resPtr.Interface()); err != nil {
-		return reflect.ValueOf(nil), err
-	}
-	return resPtr, nil
-}
-
 func (hm *HandlersManager) PrepareParameters(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (reflect.Value, error) {
-	optsType := handler.method.Type.In(2).Elem()
-	params, err := prepareParameters(parameters, handler.Parameters, optsType)
+	if err := parameters.Parse(); err != nil {
+		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
+	}
+	resPtr := reflect.New(handler.Request.Type)
+	res := resPtr.Elem()
+	err := prepareParameters(res, parameters, handler.Request.Fields, handler.Request.Type)
 	if err != nil {
 		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
 	}
-	return params, nil
+	return resPtr, nil
 }
 
 func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVersion, params reflect.Value) (interface{}, *CallHandlerError) {
@@ -336,24 +379,15 @@ func (hm *HandlersManager) getHandlerByPath(path string) *handlerEntity {
 	return hm.handlers[path]
 }
 
-func prepareParameters(handlerParameters IHandlerParameters, parameters []handlerParameter, parametersStructType reflect.Type) (reflect.Value, error) {
-	resPtr := reflect.New(parametersStructType)
-	res := resPtr.Elem()
-
+func prepareParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []handlerParameter, parametersStructType reflect.Type) error {
 	existingHandlerMethods := reflect.TypeOf(handlerParameters)
 
 	for _, param := range parameters {
-		if !handlerParameters.IsExists(param.GetKey()) {
+		if !handlerParameters.IsExists(param.Path, param.GetKey()) {
 			if param.IsRequired {
-				return reflect.ValueOf(nil), fmt.Errorf("Missed required field '%s'", param.GetKey())
+				return fmt.Errorf("Missed required field '%s'", param.GetKey())
 			}
 			continue
-		}
-
-		method := existingHandlerMethods.Method(param.getMethod.Index)
-		retValues := method.Func.Call([]reflect.Value{reflect.ValueOf(handlerParameters), reflect.ValueOf(param.GetKey())})
-		if len(retValues) > 1 && !retValues[1].IsNil() {
-			return reflect.ValueOf(nil), retValues[1].Interface().(error)
 		}
 
 		structField := res.FieldByIndex(param.structField.Index)
@@ -361,10 +395,28 @@ func prepareParameters(handlerParameters IHandlerParameters, parameters []handle
 			structField.Set(reflect.New(structField.Type().Elem()))
 			structField = structField.Elem()
 		}
-		structField.Set(retValues[0])
+
+		t := param.RawType
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+		if t.Kind() != reflect.Struct {
+			method := existingHandlerMethods.Method(param.getMethod.Index)
+			retValues := method.Func.Call([]reflect.Value{reflect.ValueOf(handlerParameters), reflect.ValueOf(param.Path), reflect.ValueOf(param.GetKey())})
+			if len(retValues) > 1 && !retValues[1].IsNil() {
+				return retValues[1].Interface().(error)
+			}
+			structField.Set(retValues[0])
+		} else {
+			err := prepareParameters(structField, handlerParameters, param.Fields, param.RawType)
+			if err != nil {
+				return err
+			}
+		}
+		// TODO: map, array, whatever
 	}
 
-	return resPtr, nil
+	return nil
 }
 
 func findParameterGetMethod(handlerMethodsType reflect.Type, field reflect.Type) (reflect.Method, bool) {

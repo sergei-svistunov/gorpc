@@ -13,15 +13,19 @@ type ParametersGetter struct {
 	values url.Values
 }
 
-func (pg *ParametersGetter) IsExists(name string) bool {
+func (pg *ParametersGetter) Parse() error {
+	return pg.parseForm()
+}
+
+func (pg *ParametersGetter) IsExists(path []string, name string) bool {
 	return pg.get(name) != ""
 }
 
-func (pg *ParametersGetter) GetString(name string) (string, error) {
+func (pg *ParametersGetter) GetString(path []string, name string) (string, error) {
 	return pg.get(name), nil
 }
 
-func (pg *ParametersGetter) GetBool(name string) (bool, error) {
+func (pg *ParametersGetter) GetBool(path []string, name string) (bool, error) {
 	v, err := strconv.ParseBool(pg.get(name))
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Bool`)
@@ -29,7 +33,7 @@ func (pg *ParametersGetter) GetBool(name string) (bool, error) {
 	return v, err
 }
 
-func (pg *ParametersGetter) GetUint(name string) (uint, error) {
+func (pg *ParametersGetter) GetUint(path []string, name string) (uint, error) {
 	v, err := strconv.ParseUint(pg.get(name), 0, 0)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Uint`)
@@ -37,11 +41,11 @@ func (pg *ParametersGetter) GetUint(name string) (uint, error) {
 	return uint(v), err
 }
 
-func (pg *ParametersGetter) GetByte(name string) (uint8, error) {
-	return pg.GetUint8(name)
+func (pg *ParametersGetter) GetByte(path []string, name string) (uint8, error) {
+	return pg.GetUint8(path, name)
 }
 
-func (pg *ParametersGetter) GetUint8(name string) (uint8, error) {
+func (pg *ParametersGetter) GetUint8(path []string, name string) (uint8, error) {
 	v, err := strconv.ParseUint(pg.get(name), 0, 8)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Uint`)
@@ -49,7 +53,7 @@ func (pg *ParametersGetter) GetUint8(name string) (uint8, error) {
 	return uint8(v), err
 }
 
-func (pg *ParametersGetter) GetUint16(name string) (uint16, error) {
+func (pg *ParametersGetter) GetUint16(path []string, name string) (uint16, error) {
 	v, err := strconv.ParseUint(pg.get(name), 0, 16)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Uint`)
@@ -57,7 +61,7 @@ func (pg *ParametersGetter) GetUint16(name string) (uint16, error) {
 	return uint16(v), err
 }
 
-func (pg *ParametersGetter) GetUint32(name string) (uint32, error) {
+func (pg *ParametersGetter) GetUint32(path []string, name string) (uint32, error) {
 	v, err := strconv.ParseUint(pg.get(name), 0, 32)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Uint`)
@@ -65,7 +69,7 @@ func (pg *ParametersGetter) GetUint32(name string) (uint32, error) {
 	return uint32(v), err
 }
 
-func (pg *ParametersGetter) GetUint64(name string) (uint64, error) {
+func (pg *ParametersGetter) GetUint64(path []string, name string) (uint64, error) {
 	v, err := strconv.ParseUint(pg.get(name), 0, 64)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Uint`)
@@ -73,7 +77,7 @@ func (pg *ParametersGetter) GetUint64(name string) (uint64, error) {
 	return v, err
 }
 
-func (pg *ParametersGetter) GetInt(name string) (int, error) {
+func (pg *ParametersGetter) GetInt(path []string, name string) (int, error) {
 	v, err := strconv.ParseInt(pg.get(name), 0, 0)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Int`)
@@ -81,7 +85,7 @@ func (pg *ParametersGetter) GetInt(name string) (int, error) {
 	return int(v), err
 }
 
-func (pg *ParametersGetter) GetInt8(name string) (int8, error) {
+func (pg *ParametersGetter) GetInt8(path []string, name string) (int8, error) {
 	v, err := strconv.ParseInt(pg.get(name), 0, 8)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Int`)
@@ -89,7 +93,7 @@ func (pg *ParametersGetter) GetInt8(name string) (int8, error) {
 	return int8(v), err
 }
 
-func (pg *ParametersGetter) GetInt16(name string) (int16, error) {
+func (pg *ParametersGetter) GetInt16(path []string, name string) (int16, error) {
 	v, err := strconv.ParseInt(pg.get(name), 0, 16)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Int`)
@@ -97,7 +101,7 @@ func (pg *ParametersGetter) GetInt16(name string) (int16, error) {
 	return int16(v), err
 }
 
-func (pg *ParametersGetter) GetInt32(name string) (int32, error) {
+func (pg *ParametersGetter) GetInt32(path []string, name string) (int32, error) {
 	v, err := strconv.ParseInt(pg.get(name), 0, 32)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Int`)
@@ -105,7 +109,7 @@ func (pg *ParametersGetter) GetInt32(name string) (int32, error) {
 	return int32(v), err
 }
 
-func (pg *ParametersGetter) GetInt64(name string) (int64, error) {
+func (pg *ParametersGetter) GetInt64(path []string, name string) (int64, error) {
 	v, err := strconv.ParseInt(pg.get(name), 0, 64)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Int`)
@@ -113,7 +117,7 @@ func (pg *ParametersGetter) GetInt64(name string) (int64, error) {
 	return v, err
 }
 
-func (pg *ParametersGetter) GetFloat32(name string) (float32, error) {
+func (pg *ParametersGetter) GetFloat32(path []string, name string) (float32, error) {
 	v, err := strconv.ParseFloat(pg.get(name), 32)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Float`)
@@ -121,7 +125,7 @@ func (pg *ParametersGetter) GetFloat32(name string) (float32, error) {
 	return float32(v), err
 }
 
-func (pg *ParametersGetter) GetFloat64(name string) (float64, error) {
+func (pg *ParametersGetter) GetFloat64(path []string, name string) (float64, error) {
 	v, err := strconv.ParseFloat(pg.get(name), 64)
 	if err != nil {
 		err = errors.New(`Wrong value of param "` + name + `". It should be Float`)
@@ -129,7 +133,7 @@ func (pg *ParametersGetter) GetFloat64(name string) (float64, error) {
 	return v, err
 }
 
-func (pg *ParametersGetter) GetStringSlice(name string) []string {
+func (pg *ParametersGetter) GetStringSlice(path []string, name string) []string {
 	return pg.getSlice(name)
 }
 
@@ -142,7 +146,6 @@ func (pg *ParametersGetter) get(name string) string {
 }
 
 func (pg *ParametersGetter) getSlice(name string) []string {
-	pg.parseForm()
 	name = strings.ToLower(name)
 	if slice, ok := pg.values[name]; ok {
 		return slice

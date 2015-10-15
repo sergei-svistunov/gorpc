@@ -46,20 +46,20 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 			Description: "Required integer argument",
 			Key:         "req_int",
 			IsRequired:  true,
-			RawType:     hv1.Parameters[0].RawType,
-			getMethod:   hv1.Parameters[0].getMethod,
-			structField: hv1.Parameters[0].structField,
+			RawType:     hv1.Request.Fields[0].RawType,
+			getMethod:   hv1.Request.Fields[0].getMethod,
+			structField: hv1.Request.Fields[0].structField,
 		},
 		handlerParameter{
 			Name:        "Int",
 			Description: "Unrequired integer argument",
 			Key:         "int",
 			IsRequired:  false,
-			RawType:     hv1.Parameters[1].RawType,
-			getMethod:   hv1.Parameters[1].getMethod,
-			structField: hv1.Parameters[1].structField,
+			RawType:     hv1.Request.Fields[1].RawType,
+			getMethod:   hv1.Request.Fields[1].getMethod,
+			structField: hv1.Request.Fields[1].structField,
 		},
-	}, hv1.Parameters)
+	}, hv1.Request.Fields)
 
 	s.Equal("v2", hv2.Version)
 	s.False(hv2.UseCache)
