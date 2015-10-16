@@ -31,5 +31,8 @@ func main() {
 	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm, http_json.SwaggerJSONCallbacks{}))
 	http.Handle("/docs/", http.StripPrefix("/docs", swagger_ui.NewHTTPHandler()))
 
-	http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
