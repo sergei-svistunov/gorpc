@@ -127,7 +127,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		hm.handlerVersions[route] = version
 
 		_, version.UseCache = handlerType.MethodByName(handlerMethodPrefix + "UseCache")
-		_, version.AcceptJSON = handlerType.MethodByName(handlerMethodPrefix + "AcceptJSON")
+		_, flatRequest := handlerType.MethodByName(handlerMethodPrefix + "ConsumeFlatRequest")
 
 		if vMethodType.Type.NumOut() != 2 {
 			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)}
@@ -139,7 +139,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 
 		version.Request = handlerRequest{
 			Type: paramsType,
-			Flat: !version.AcceptJSON,
+			Flat: flatRequest,
 		}
 		if version.Request.Type.Kind() == reflect.Ptr {
 			version.Request.Type = version.Request.Type.Elem()
@@ -148,7 +148,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		err := processParameters(&version.Request, existingHandlerMethods)
+		err := processParametersInfo(&version.Request, existingHandlerMethods)
 		if err != nil {
 			return fmt.Errorf("%s (handler %s, version number %d)", err.Error(), handlerPath, handlerVersion)
 		}
@@ -197,7 +197,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	return nil
 }
 
-func processParameters(request *handlerRequest, existingHandlerMethods reflect.Type) error {
+func processParametersInfo(request *handlerRequest, existingHandlerMethods reflect.Type) error {
 	params, err := processParamFields(request.Type, existingHandlerMethods, nil, request.Flat)
 	if err != nil {
 		return err
@@ -213,48 +213,43 @@ func processParamFields(fieldType, existingHandlerMethods reflect.Type, path []s
 	}
 	for i := 0; i < fieldType.NumField(); i++ {
 		fieldType := fieldType.Field(i)
-		parameter := handlerParameter{}
 
-		if !flat {
-			parameter.Key = fieldType.Tag.Get("json")
-			parameter.Path = path
-		} else {
-			parameter.Key = fieldType.Tag.Get("key")
+		parameter := handlerParameter{
+			Key:         fieldType.Tag.Get("key"),
+			Path:        path,
+			Name:        fieldType.Name,
+			RawType:     fieldType.Type,
+			structField: fieldType,
+			Description: fieldType.Tag.Get("description"),
+			IsRequired:  fieldType.Type.Kind() != reflect.Ptr,
 		}
+
 		if parameter.Key == "" || parameter.Key == "-" {
-			return nil, fmt.Errorf("tag \"key\" or \"json\" must be specified for parameter %q", fieldType.Name)
+			return nil, fmt.Errorf("tag \"key\" must be specified for parameter %q", fieldType.Name)
 		}
 
-		parameter.Name = fieldType.Name
 		if unicode.IsLower(rune(fieldType.Name[0])) {
 			return nil, fmt.Errorf("Parameters field %s is private", parameter.Name)
 		}
 
-		parameter.RawType = fieldType.Type
+		if parameter.Description == "" {
+			return nil, fmt.Errorf("Opt %s does not have description", fieldType.Name)
+		}
 
 		t := fieldType.Type
 		if t.Kind() == reflect.Ptr {
 			t = t.Elem()
 		}
-
 		if t.Kind() != reflect.Struct {
 			paramGetMethod, exist := findParameterGetMethod(existingHandlerMethods, fieldType.Type)
 			if !exist {
 				return nil, fmt.Errorf("Type %s does not supported", fieldType.Type.Kind().String())
 			}
 			parameter.getMethod = paramGetMethod
-		}
-		parameter.structField = fieldType
 
-		parameter.Description = fieldType.Tag.Get("description")
-		if parameter.Description == "" {
-			return nil, fmt.Errorf("Opt %s does not have description", fieldType.Name)
-		}
-		parameter.IsRequired = fieldType.Type.Kind() != reflect.Ptr
-
-		if t.Kind() == reflect.Struct {
+		} else {
 			if flat {
-				return nil, fmt.Errorf("Deep nesting not supported in flat parameters", fieldType.Name)
+				return nil, fmt.Errorf("Deep nesting is not supported, type %s marked flat", fieldType.Name)
 			}
 
 			var path []string

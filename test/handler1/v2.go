@@ -27,6 +27,8 @@ func (*Handler) V2ErrorsVar() *V2ErrorTypes {
 	return &v2Errors
 }
 
+func (*Handler) V2ConsumeFlatRequest() {}
+
 func (*Handler) V2(ctx context.Context, opts *v2Args) (*V2Res, error) {
 	if opts.ReturnErrorID == nil {
 		return &V2Res{

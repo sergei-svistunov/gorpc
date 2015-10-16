@@ -164,7 +164,7 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 				operation.Description += ".<br/>Handler caches response."
 			}
 
-			if v.AcceptJSON {
+			if !v.Request.Flat {
 				bodySchema := getOrCreateSchema(swagger.Definitions, v.Request.Type)
 				param := Parameter{
 					Name:        "body",
@@ -229,10 +229,10 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 			}
 
 			var method string
-			if v.AcceptJSON {
-				method = "post"
-			} else {
+			if v.Request.Flat {
 				method = "get"
+			} else {
+				method = "post"
 			}
 			swagger.Paths[path+"/"+v.Version+"/"] = PathItem{
 				method: operation,

@@ -14,6 +14,8 @@ type V1Res struct {
 	Int    int    `json:"int" description:"Int field"`
 }
 
+func (*Handler) V1ConsumeFlatRequest() {}
+
 func (*Handler) V1UseCache() {}
 
 func (*Handler) V1(ctx context.Context, opts *v1Args) (*V1Res, error) {

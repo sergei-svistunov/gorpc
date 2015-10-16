@@ -105,20 +105,8 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ctx = h.callbacks.OnInitCtx(req)
 	}
 
-	if req.Method != "POST" && handler.AcceptJSON {
-		if h.callbacks.OnError != nil {
-			err := &gorpc.CallHandlerError{
-				Type: gorpc.ErrorInvalidMethod,
-				Err:  errors.New("Invalid method"),
-			}
-			h.callbacks.OnError(ctx, w, req, nil, err)
-		}
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-		return
-	}
-
 	jsonRequest := (req.Header.Get("Content-Type") == "application/json")
-	if handler.AcceptJSON != jsonRequest {
+	if jsonRequest && req.Method != "POST" {
 		if h.callbacks.OnError != nil {
 			err := &gorpc.CallHandlerError{
 				Type: gorpc.ErrorInvalidMethod,
