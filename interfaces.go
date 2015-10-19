@@ -6,6 +6,7 @@ type IHandler interface {
 }
 
 type IHandlerParameters interface {
+	Fork(m map[string]interface{}) interface{}
 	Parse() error
 
 	IsExists([]string, string) bool
@@ -30,5 +31,6 @@ type IHandlerParameters interface {
 	GetFloat32([]string, string) (float32, error)
 	GetFloat64([]string, string) (float64, error)
 
-	GetStringSlice([]string, string) []string
+	GetSlice([]string, string) []interface{}
+	GetMap(path []string, name string) map[string]interface{}
 }

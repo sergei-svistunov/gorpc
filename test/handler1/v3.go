@@ -1,13 +1,15 @@
 package handler1
 
-import (
-	"golang.org/x/net/context"
-)
+import "golang.org/x/net/context"
 
 type V3Request struct {
-	ReqInt   int         `json:"req_int" key:"req_int" description:"Required integer argument"`
-	Nested   V3Nested    `json:"nested" key:"nested" description:"Nested field"`
-	Optional *V3Optional `json:"optional" key:"optional" description:"Optional field"`
+	ReqInt      int                   `json:"req_int" key:"req_int" description:"Required integer argument"`
+	Nested      V3Nested              `json:"nested" key:"nested" description:"Nested field"`
+	Optional    *V3Optional           `json:"optional" key:"optional" description:"Optional field"`
+	StringMap   map[string]string     `json:"strings" key:"strings" description:"Map field"`
+	StringSlice []string              `json:"slices" key:"slices" description:"Slice field"`
+	ObjMap      map[string]V3Optional `json:"obj_map" key:"obj_map" description:"Map field"`
+	ObjSlice    []V3Optional          `json:"obj_slice" key:"obj_slice" description:"Slice field"`
 }
 
 type V3Nested struct {

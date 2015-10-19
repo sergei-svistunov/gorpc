@@ -13,6 +13,10 @@ type ParametersGetter struct {
 	values url.Values
 }
 
+func (p *ParametersGetter) Fork(values map[string]interface{}) interface{} {
+	panic("not supported")
+}
+
 func (pg *ParametersGetter) Parse() error {
 	return pg.parseForm()
 }
@@ -133,8 +137,17 @@ func (pg *ParametersGetter) GetFloat64(path []string, name string) (float64, err
 	return v, err
 }
 
-func (pg *ParametersGetter) GetStringSlice(path []string, name string) []string {
-	return pg.getSlice(name)
+func (p *ParametersGetter) GetSlice(path []string, name string) []interface{} {
+	strSlice := p.getSlice(name)
+	slice := make([]interface{}, len(strSlice))
+	for i, v := range strSlice {
+		slice[i] = v
+	}
+	return slice
+}
+
+func (p *ParametersGetter) GetMap(path []string, name string) map[string]interface{} {
+	panic("maps not supported")
 }
 
 func (pg *ParametersGetter) get(name string) string {

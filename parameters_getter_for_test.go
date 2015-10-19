@@ -10,6 +10,10 @@ type ParametersGetter struct {
 	Values map[string][]string
 }
 
+func (pg *ParametersGetter) Fork(m map[string]interface{}) interface{} {
+	panic("not supported")
+}
+
 func (pg *ParametersGetter) Parse() error {
 	return nil
 }
@@ -20,13 +24,20 @@ func (pg *ParametersGetter) IsExists(path []string, name string) bool {
 	return exists
 }
 
-func (pg *ParametersGetter) GetStringSlice(path []string, name string) []string {
+func (pg *ParametersGetter) GetSlice(path []string, name string) []interface{} {
 	name = strings.ToLower(name)
-	if slice, ok := pg.Values[name]; ok {
+	if strSlice, ok := pg.Values[name]; ok {
+		slice := make([]interface{}, len(strSlice))
+		for i, v := range strSlice {
+			slice[i] = v
+		}
 		return slice
 	}
+	return nil
+}
 
-	return []string{}
+func (pg *ParametersGetter) GetMap(path []string, name string) map[string]interface{} {
+	panic("maps not supported")
 }
 
 func (pg *ParametersGetter) GetString(path []string, name string) (string, error) {

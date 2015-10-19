@@ -240,7 +240,7 @@ func processParamFields(fieldType, existingHandlerMethods reflect.Type, path []s
 		if t.Kind() == reflect.Ptr {
 			t = t.Elem()
 		}
-		if t.Kind() != reflect.Struct {
+		if t.Kind() != reflect.Struct && t.Kind() != reflect.Map && t.Kind() != reflect.Slice {
 			paramGetMethod, exist := findParameterGetMethod(existingHandlerMethods, fieldType.Type)
 			if !exist {
 				return nil, fmt.Errorf("Type %s does not supported", fieldType.Type.Kind().String())
@@ -258,9 +258,18 @@ func processParamFields(fieldType, existingHandlerMethods reflect.Type, path []s
 			}
 			path = append(path, parameter.Key)
 			var err error
-			parameter.Fields, err = processParamFields(t, existingHandlerMethods, path, false)
-			if err != nil {
-				return nil, err
+			if t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Map {
+				t = t.Elem()
+				path = nil
+			}
+			if t.Kind() == reflect.Ptr {
+				t = t.Elem()
+			}
+			if t.Kind() == reflect.Struct {
+				parameter.Fields, err = processParamFields(t, existingHandlerMethods, path, false)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 
@@ -395,30 +404,71 @@ func prepareParameters(res reflect.Value, handlerParameters IHandlerParameters, 
 		if t.Kind() == reflect.Ptr {
 			t = t.Elem()
 		}
-		if t.Kind() != reflect.Struct {
+		if t.Kind() == reflect.Struct {
+			err := prepareParameters(structField, handlerParameters, param.Fields, param.RawType)
+			if err != nil {
+				return err
+			}
+
+		} else if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+			a := handlerParameters.GetSlice(param.Path, param.Key)
+			container := structField
+			for _, v := range a {
+				val, err := createContainerValue(container, v, param, handlerParameters)
+				if err != nil {
+					return err
+				}
+				container = reflect.Append(container, val)
+			}
+			structField.Set(container)
+
+		} else if t.Kind() == reflect.Map {
+			m := handlerParameters.GetMap(param.Path, param.Key)
+			container := reflect.MakeMap(t)
+			for k, v := range m {
+				val, err := createContainerValue(container, v, param, handlerParameters)
+				if err != nil {
+					return err
+				}
+				container.SetMapIndex(reflect.ValueOf(k), val)
+			}
+			structField.Set(container)
+
+		} else {
 			method := existingHandlerMethods.Method(param.getMethod.Index)
 			retValues := method.Func.Call([]reflect.Value{reflect.ValueOf(handlerParameters), reflect.ValueOf(param.Path), reflect.ValueOf(param.GetKey())})
 			if len(retValues) > 1 && !retValues[1].IsNil() {
 				return retValues[1].Interface().(error)
 			}
 			structField.Set(retValues[0])
-		} else {
-			err := prepareParameters(structField, handlerParameters, param.Fields, param.RawType)
-			if err != nil {
-				return err
-			}
 		}
-		// TODO: map, array, whatever
 	}
-
 	return nil
+}
+
+func createContainerValue(container reflect.Value, v interface{}, param handlerParameter, handlerParameters IHandlerParameters) (reflect.Value, error) {
+	val := reflect.ValueOf(v)
+	t := container.Type().Elem()
+	if t.Kind() == reflect.Ptr {
+		t = val.Elem().Type()
+	}
+	if t.Kind() == reflect.Struct {
+		val = reflect.New(t).Elem()
+		// ugly hack just to use IHandlerParameters for parsing
+		handlerParameters = handlerParameters.Fork(v.(map[string]interface{})).(IHandlerParameters)
+		err := prepareParameters(val,
+			handlerParameters,
+			param.Fields, t)
+		if err != nil {
+			return reflect.ValueOf(nil), err
+		}
+	}
+	return val, nil
 }
 
 func findParameterGetMethod(handlerMethodsType reflect.Type, field reflect.Type) (reflect.Method, bool) {
 	var name []rune
 	switch field.Kind() {
-	case reflect.Array, reflect.Slice:
-		name = []rune(field.Elem().Kind().String() + "Slice")
 	case reflect.Ptr:
 		name = []rune(field.Elem().Kind().String())
 	default:

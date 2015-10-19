@@ -26,6 +26,10 @@ func (p *JsonParametersGetter) Parse() error {
 	return decoder.Decode(&p.values)
 }
 
+func (p *JsonParametersGetter) Fork(values map[string]interface{}) interface{} {
+	return &JsonParametersGetter{values: values}
+}
+
 func (p *JsonParametersGetter) IsExists(path []string, name string) bool {
 	_, ok := p.get(path, name)
 	return ok
@@ -125,16 +129,20 @@ func (p *JsonParametersGetter) getNumber(path []string, name string) (json.Numbe
 	return json.Number(""), errors.New(`Wrong value of param "` + name + `". It must be number`)
 }
 
-func (p *JsonParametersGetter) GetStringSlice(path []string, name string) []string {
+func (p *JsonParametersGetter) GetSlice(path []string, name string) []interface{} {
 	v, _ := p.get(path, name)
 	if a, ok := v.([]interface{}); ok {
-		sa := make([]string, len(a))
-		for i, e := range a {
-			sa[i] = e.(string)
-		}
-		return sa
+		return a
 	}
-	return []string{}
+	return nil
+}
+
+func (p *JsonParametersGetter) GetMap(path []string, name string) map[string]interface{} {
+	v, _ := p.get(path, name)
+	if a, ok := v.(map[string]interface{}); ok {
+		return a
+	}
+	return nil
 }
 
 func (p *JsonParametersGetter) get(path []string, name string) (interface{}, bool) {
