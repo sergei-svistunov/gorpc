@@ -22,8 +22,14 @@ func (s *HandlersManagerSuite) SetupTest() {
 	s.hm = NewHandlersManager("github.com/sergei-svistunov/gorpc", HandlersManagerCallbacks{})
 
 	s.NoError(s.hm.RegisterHandler(test_handler1.NewHandler()))
-	s.Error(s.hm.RegisterHandler(test_handler_foreign_arguments.NewHandler()), fmt.Sprintf(`Parameter structure must be defined in the same package for handler '%s' version '%s' type '%s'`, `test/handler_foreign_arguments`, `v1`, `args.V1Args`))
-	s.Error(s.hm.RegisterHandler(test_handler_foreign_return_values.NewHandler()), fmt.Sprintf(`Return value structure must be defined in the same package for handler '%s' version '%s'`, `/test/handler_foreign_return_values`, `v2`))
+
+	err := s.hm.RegisterHandler(test_handler_foreign_arguments.NewHandler())
+	s.Error(err)
+	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' parameter: Structure must be defined in the same package`, `/test/handler_foreign_arguments`, `V1`))
+
+	err = s.hm.RegisterHandler(test_handler_foreign_return_values.NewHandler())
+	s.Error(err)
+	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' return value: Structure must be defined in the same package`, `/test/handler_foreign_return_values`, `V1`))
 }
 
 func TestRunSuite(t *testing.T) {

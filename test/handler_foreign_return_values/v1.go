@@ -10,11 +10,21 @@ type v1Args struct {
 	Int    *int `key:"int" description:"Unrequired integer argument"`
 }
 
+type V1Res struct {
+	intField    int
+	structField *return_values.V1Res
+}
+
 func (*Handler) V1UseCache() {}
 
-func (*Handler) V1(ctx context.Context, opts *v1Args) (*return_values.V1Res, error) {
-	return &return_values.V1Res{
-		String: "Test",
-		Int:    opts.ReqInt,
-	}, nil
+func (*Handler) V1(ctx context.Context, opts *v1Args) ([]*V1Res, error) {
+	result := []*V1Res{
+		{
+			structField: &return_values.V1Res{
+				String: "Test",
+				Int:    opts.ReqInt,
+			},
+		},
+	}
+	return result, nil
 }

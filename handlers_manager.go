@@ -112,8 +112,9 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return fmt.Errorf("Type of opts for version number %d of handler %s must be Ptr to Struct", handlerVersion, handlerPath)
 		}
 
-		if paramsType.Elem().PkgPath() != handlerPtrType.PkgPath() {
-			return fmt.Errorf(`Parameter structure must be defined in the same package for handler '%s' version '%s' type '%s'`, handlerPath, v, paramsType.Elem())
+		err := checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), paramsType)
+		if err != nil {
+			return fmt.Errorf("Handler '%s' version '%s' parameter: %s", handlerPath, vMethodType.Name, err)
 		}
 
 		version := &versions[i]
@@ -146,15 +147,9 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		responseBasicType := version.Response
-		if responseBasicType.Kind().String() == `slice` {
-			responseBasicType = responseBasicType.Elem()
-		}
-		if responseBasicType.Kind().String() == `ptr` {
-			responseBasicType = responseBasicType.Elem()
-		}
-		if len(responseBasicType.PkgPath()) > 0 && responseBasicType.PkgPath() != handlerPtrType.PkgPath() {
-			return fmt.Errorf(`Return value structure must be defined in the same package for handler '%s' version '%s'`, handlerPath, v)
+		err = checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), version.Response)
+		if err != nil {
+			return fmt.Errorf("Handler '%s' version '%s' return value: %s", handlerPath, vMethodType.Name, err)
 		}
 
 		for pN, parameter := range version.Parameters {
@@ -235,6 +230,28 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	}
 
 	return nil
+}
+
+func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type) error {
+	if basicType.Kind().String() == `slice` {
+		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem())
+	} else if basicType.Kind().String() == `ptr` {
+		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem())
+	} else if len(basicType.PkgPath()) == 0 {
+		return nil
+	} else if basicType.PkgPath() != packagePath {
+		return errors.New(`Structure must be defined in the same package`)
+	} else if basicType.Kind().String() == `struct` {
+		for i := 0; i < basicType.NumField(); i++ {
+			err := checkStructureIsInTheSamePackage(packagePath, basicType.Field(i).Type)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return errors.New(`Unreachable code`)
 }
 
 // FindHandler returns a handler by given non-versioned path and given version
