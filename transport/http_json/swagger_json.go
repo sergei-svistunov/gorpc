@@ -3,6 +3,7 @@ package http_json
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -156,6 +157,10 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 
 			if v.UseCache {
 				operation.Description += ".<br/>Handler caches response."
+			}
+
+			if v.ExtraData != nil {
+				operation.Description += fmt.Sprintf("\n<!-- <extra_data>%v</extra_data> -->", v.ExtraData)
 			}
 
 			for _, p := range v.Parameters {
