@@ -7,15 +7,20 @@ import (
 	"net/http"
 )
 
+const defaultMaxFormSize = int64(10 << 20) // 10 MB is a lot of text.
+
 type JsonParametersGetter struct {
-	Req    *http.Request
-	values map[string]interface{}
+	Req         *http.Request
+	MaxFormSize int64
+	values      map[string]interface{}
 }
 
 func (p *JsonParametersGetter) Parse() error {
 	defer p.Req.Body.Close()
-	maxFormSize := int64(10 << 20) // 10 MB is a lot of text.
-	reader := io.LimitReader(p.Req.Body, maxFormSize+1)
+	if p.MaxFormSize == 0 {
+		p.MaxFormSize = defaultMaxFormSize
+	}
+	reader := io.LimitReader(p.Req.Body, p.MaxFormSize)
 	decoder := json.NewDecoder(reader)
 	decoder.UseNumber()
 	return decoder.Decode(&p.values)
