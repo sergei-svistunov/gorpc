@@ -112,6 +112,10 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return fmt.Errorf("Type of opts for version number %d of handler %s must be Ptr to Struct", handlerVersion, handlerPath)
 		}
 
+		if paramsType.Elem().PkgPath() != handlerPtrType.PkgPath() {
+			return fmt.Errorf(`Parameter structure must be defined in the same package for handler '%s' version '%s' type '%s'`, handlerPath, v, paramsType.Elem())
+		}
+
 		version := &versions[i]
 		version.Version = "v" + strconv.Itoa(v)
 		version.Parameters = make([]handlerParameter, paramsType.Elem().NumField())
@@ -141,6 +145,17 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
+
+		responseBasicType := version.Response
+		if responseBasicType.Kind().String() == `slice` {
+			responseBasicType = responseBasicType.Elem()
+		}
+		if responseBasicType.Kind().String() == `ptr` {
+			responseBasicType = responseBasicType.Elem()
+		}
+		if len(responseBasicType.PkgPath()) > 0 && responseBasicType.PkgPath() != handlerPtrType.PkgPath() {
+			return fmt.Errorf(`Return value structure must be defined in the same package for handler '%s' version '%s'`, handlerPath, v)
+		}
 
 		for pN, parameter := range version.Parameters {
 			fieldType := paramsType.Elem().Field(pN)

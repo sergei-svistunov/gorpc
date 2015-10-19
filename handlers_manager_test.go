@@ -1,12 +1,15 @@
 package gorpc
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 	"golang.org/x/net/context"
 
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
+	test_handler_foreign_arguments "github.com/sergei-svistunov/gorpc/test/handler_foreign_arguments"
+	test_handler_foreign_return_values "github.com/sergei-svistunov/gorpc/test/handler_foreign_return_values"
 )
 
 // Suite definition
@@ -19,6 +22,8 @@ func (s *HandlersManagerSuite) SetupTest() {
 	s.hm = NewHandlersManager("github.com/sergei-svistunov/gorpc", HandlersManagerCallbacks{})
 
 	s.NoError(s.hm.RegisterHandler(test_handler1.NewHandler()))
+	s.Error(s.hm.RegisterHandler(test_handler_foreign_arguments.NewHandler()), fmt.Sprintf(`Parameter structure must be defined in the same package for handler '%s' version '%s' type '%s'`, `test/handler_foreign_arguments`, `v1`, `args.V1Args`))
+	s.Error(s.hm.RegisterHandler(test_handler_foreign_return_values.NewHandler()), fmt.Sprintf(`Return value structure must be defined in the same package for handler '%s' version '%s'`, `/test/handler_foreign_return_values`, `v2`))
 }
 
 func TestRunSuite(t *testing.T) {
