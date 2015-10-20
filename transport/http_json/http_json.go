@@ -124,7 +124,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	} else {
 		paramsGetter = &ParametersGetter{Req: req}
 	}
-	params, paramsErr := h.hm.PrepareParameters(ctx, handler, paramsGetter)
+	params, paramsErr := h.hm.UnmarshalParameters(ctx, handler, paramsGetter)
 	if paramsErr != nil {
 		if h.callbacks.OnError != nil {
 			grpcErr := &gorpc.CallHandlerError{

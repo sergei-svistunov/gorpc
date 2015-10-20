@@ -31,6 +31,6 @@ type IHandlerParameters interface {
 	GetFloat32([]string, string) (float32, error)
 	GetFloat64([]string, string) (float64, error)
 
-	GetSlice([]string, string) []interface{}
-	GetMap(path []string, name string) map[string]interface{}
+	TraverseSlice(path []string, name string, h func(i int, v interface{}) error) (bool, error)
+	TraverseMap(path []string, name string, h func(k string, v interface{}) error) (bool, error)
 }

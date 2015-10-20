@@ -137,16 +137,17 @@ func (pg *ParametersGetter) GetFloat64(path []string, name string) (float64, err
 	return v, err
 }
 
-func (p *ParametersGetter) GetSlice(path []string, name string) []interface{} {
+func (p *ParametersGetter) TraverseSlice(path []string, name string, h func(i int, v interface{}) error) (bool, error) {
 	strSlice := p.getSlice(name)
-	slice := make([]interface{}, len(strSlice))
 	for i, v := range strSlice {
-		slice[i] = v
+		if err := h(i, v); err != nil {
+			return false, err
+		}
 	}
-	return slice
+	return true, nil
 }
 
-func (p *ParametersGetter) GetMap(path []string, name string) map[string]interface{} {
+func (p *ParametersGetter) TraverseMap(path []string, name string, h func(k string, v interface{}) error) (bool, error) {
 	panic("maps not supported")
 }
 

@@ -94,7 +94,7 @@ func (s *HandlersManagerSuite) TestHandlerManager_CallHandler1V1_ReturnResult() 
 		s.NotNil(hanlerVersion)
 	}
 
-	params, err := s.hm.PrepareParameters(context.TODO(), hanlerVersion, pg)
+	params, err := s.hm.UnmarshalParameters(context.TODO(), hanlerVersion, pg)
 	s.NoError(err)
 
 	res, err := s.hm.CallHandler(context.TODO(), hanlerVersion, params)
@@ -112,6 +112,6 @@ func (s *HandlersManagerSuite) TestHandlerManager_PrepareParametersWithError() {
 		s.NotNil(hanlerVersion)
 	}
 
-	_, err := s.hm.PrepareParameters(context.TODO(), hanlerVersion, pg)
+	_, err := s.hm.UnmarshalParameters(context.TODO(), hanlerVersion, pg)
 	s.Error(err)
 }

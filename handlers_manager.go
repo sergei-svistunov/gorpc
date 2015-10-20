@@ -240,7 +240,7 @@ func processParamFields(fieldType, existingHandlerMethods reflect.Type, path []s
 		if t.Kind() == reflect.Ptr {
 			t = t.Elem()
 		}
-		if t.Kind() != reflect.Struct && t.Kind() != reflect.Map && t.Kind() != reflect.Slice {
+		if t.Kind() != reflect.Struct && t.Kind() != reflect.Map && t.Kind() != reflect.Slice && t.Kind() != reflect.Array {
 			paramGetMethod, exist := findParameterGetMethod(existingHandlerMethods, fieldType.Type)
 			if !exist {
 				return nil, fmt.Errorf("Type %s does not supported", fieldType.Type.Kind().String())
@@ -302,13 +302,13 @@ func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
 	return hm.handlerVersions[route]
 }
 
-func (hm *HandlersManager) PrepareParameters(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (reflect.Value, error) {
+func (hm *HandlersManager) UnmarshalParameters(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (reflect.Value, error) {
 	if err := parameters.Parse(); err != nil {
 		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
 	}
 	resPtr := reflect.New(handler.Request.Type)
 	res := resPtr.Elem()
-	err := prepareParameters(res, parameters, handler.Request.Fields, handler.Request.Type)
+	err := unmarshalParameters(res, parameters, handler.Request.Fields, handler.Request.Type)
 	if err != nil {
 		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
 	}
@@ -383,7 +383,7 @@ func (hm *HandlersManager) getHandlerByPath(path string) *handlerEntity {
 	return hm.handlers[path]
 }
 
-func prepareParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []handlerParameter, parametersStructType reflect.Type) error {
+func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []handlerParameter, parametersStructType reflect.Type) error {
 	existingHandlerMethods := reflect.TypeOf(handlerParameters)
 
 	for _, param := range parameters {
@@ -405,34 +405,44 @@ func prepareParameters(res reflect.Value, handlerParameters IHandlerParameters, 
 			t = t.Elem()
 		}
 		if t.Kind() == reflect.Struct {
-			err := prepareParameters(structField, handlerParameters, param.Fields, param.RawType)
+			err := unmarshalParameters(structField, handlerParameters, param.Fields, param.RawType)
 			if err != nil {
 				return err
 			}
 
 		} else if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
-			a := handlerParameters.GetSlice(param.Path, param.Key)
 			container := structField
-			for _, v := range a {
-				val, err := createContainerValue(container, v, param, handlerParameters)
+			ok, err := handlerParameters.TraverseSlice(param.Path, param.Key, func(_ int, v interface{}) error {
+				val, err := createContainerValue(t.Elem(), v, param, handlerParameters)
 				if err != nil {
 					return err
 				}
 				container = reflect.Append(container, val)
+				return nil
+			})
+			if err != nil {
+				return err
 			}
-			structField.Set(container)
+			if ok {
+				structField.Set(container)
+			}
 
 		} else if t.Kind() == reflect.Map {
-			m := handlerParameters.GetMap(param.Path, param.Key)
 			container := reflect.MakeMap(t)
-			for k, v := range m {
-				val, err := createContainerValue(container, v, param, handlerParameters)
+			ok, err := handlerParameters.TraverseMap(param.Path, param.Key, func(k string, v interface{}) error {
+				val, err := createContainerValue(t.Elem(), v, param, handlerParameters)
 				if err != nil {
 					return err
 				}
 				container.SetMapIndex(reflect.ValueOf(k), val)
+				return nil
+			})
+			if err != nil {
+				return err
 			}
-			structField.Set(container)
+			if ok {
+				structField.Set(container)
+			}
 
 		} else {
 			method := existingHandlerMethods.Method(param.getMethod.Index)
@@ -446,17 +456,14 @@ func prepareParameters(res reflect.Value, handlerParameters IHandlerParameters, 
 	return nil
 }
 
-func createContainerValue(container reflect.Value, v interface{}, param handlerParameter, handlerParameters IHandlerParameters) (reflect.Value, error) {
+func createContainerValue(t reflect.Type, v interface{}, param handlerParameter, handlerParameters IHandlerParameters) (reflect.Value, error) {
 	val := reflect.ValueOf(v)
-	t := container.Type().Elem()
 	if t.Kind() == reflect.Ptr {
 		t = val.Elem().Type()
 	}
 	if t.Kind() == reflect.Struct {
 		val = reflect.New(t).Elem()
-		// ugly hack just to use IHandlerParameters for parsing
-		handlerParameters = handlerParameters.Fork(v.(map[string]interface{})).(IHandlerParameters)
-		err := prepareParameters(val,
+		err := unmarshalParameters(val,
 			handlerParameters,
 			param.Fields, t)
 		if err != nil {

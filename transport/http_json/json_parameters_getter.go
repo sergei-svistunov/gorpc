@@ -129,20 +129,44 @@ func (p *JsonParametersGetter) getNumber(path []string, name string) (json.Numbe
 	return json.Number(""), errors.New(`Wrong value of param "` + name + `". It must be number`)
 }
 
-func (p *JsonParametersGetter) GetSlice(path []string, name string) []interface{} {
+func (p *JsonParametersGetter) TraverseSlice(path []string, name string, h func(i int, v interface{}) error) (bool, error) {
 	v, _ := p.get(path, name)
 	if a, ok := v.([]interface{}); ok {
-		return a
+		origValues := p.values
+		defer func() {
+			p.values = origValues
+		}()
+		for i, v := range a {
+			if m, ok := v.(map[string]interface{}); ok {
+				p.values = m
+			}
+			if err := h(i, v); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
-func (p *JsonParametersGetter) GetMap(path []string, name string) map[string]interface{} {
+func (p *JsonParametersGetter) TraverseMap(path []string, name string, h func(k string, v interface{}) error) (bool, error) {
 	v, _ := p.get(path, name)
-	if a, ok := v.(map[string]interface{}); ok {
-		return a
+	if m, ok := v.(map[string]interface{}); ok {
+		origValues := p.values
+		defer func() {
+			p.values = origValues
+		}()
+		for k, v := range m {
+			if submap, ok := v.(map[string]interface{}); ok {
+				p.values = submap
+			}
+			if err := h(k, v); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
 func (p *JsonParametersGetter) get(path []string, name string) (interface{}, bool) {

@@ -24,19 +24,20 @@ func (pg *ParametersGetter) IsExists(path []string, name string) bool {
 	return exists
 }
 
-func (pg *ParametersGetter) GetSlice(path []string, name string) []interface{} {
+func (pg *ParametersGetter) TraverseSlice(path []string, name string, h func(i int, v interface{}) error) (bool, error) {
 	name = strings.ToLower(name)
 	if strSlice, ok := pg.Values[name]; ok {
-		slice := make([]interface{}, len(strSlice))
 		for i, v := range strSlice {
-			slice[i] = v
+			if err := h(i, v); err != nil {
+				return false, err
+			}
 		}
-		return slice
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
-func (pg *ParametersGetter) GetMap(path []string, name string) map[string]interface{} {
+func (pg *ParametersGetter) TraverseMap(path []string, name string, h func(k string, v interface{}) error) (bool, error) {
 	panic("maps not supported")
 }
 
