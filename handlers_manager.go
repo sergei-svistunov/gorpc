@@ -86,9 +86,6 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	sort.Sort(sort.IntSlice(handlerVersionsIds))
 	versions := make([]handlerVersion, len(handlerVersionsIds))
 
-	v := new(IHandlerParameters)
-	existingHandlerMethods := reflect.TypeOf(v).Elem()
-
 	for i, v := range handlerVersionsIds {
 		handlerVersion := i + 1
 		if handlerVersion != v {
@@ -137,18 +134,11 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Second output parameter should be error (handler %s version number %d)", handlerPath, handlerVersion)}
 		}
 
-		version.Request = handlerRequest{
-			Type: paramsType,
-			Flat: flatRequest,
-		}
-		if version.Request.Type.Kind() == reflect.Ptr {
-			version.Request.Type = version.Request.Type.Elem()
-		}
-
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		err := processParametersInfo(&version.Request, existingHandlerMethods)
+		var err error
+		version.Request, err = processRequestType(paramsType, flatRequest)
 		if err != nil {
 			return fmt.Errorf("%s (handler %s, version number %d)", err.Error(), handlerPath, handlerVersion)
 		}
@@ -197,16 +187,27 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	return nil
 }
 
-func processParametersInfo(request *handlerRequest, existingHandlerMethods reflect.Type) error {
-	params, err := processParamFields(request.Type, existingHandlerMethods, nil, request.Flat)
-	if err != nil {
-		return err
+func processRequestType(requestType reflect.Type, flat bool) (*handlerRequest, error) {
+	handlerParametersType := reflect.TypeOf(new(IHandlerParameters)).Elem()
+
+	request := &handlerRequest{
+		Type: requestType,
+		Flat: flat,
 	}
-	request.Fields = params
-	return nil
+	if request.Type.Kind() == reflect.Ptr {
+		request.Type = request.Type.Elem()
+	}
+
+	var err error
+	request.Fields, err = processParamFields(request.Type, handlerParametersType, nil, request.Flat)
+	if err != nil {
+		return nil, err
+	}
+
+	return request, nil
 }
 
-func processParamFields(fieldType, existingHandlerMethods reflect.Type, path []string, flat bool) ([]handlerParameter, error) {
+func processParamFields(fieldType, handlerParametersType reflect.Type, path []string, flat bool) ([]handlerParameter, error) {
 	var parameters []handlerParameter
 	if fieldType.Kind() == reflect.Ptr {
 		fieldType = fieldType.Elem()
@@ -241,7 +242,7 @@ func processParamFields(fieldType, existingHandlerMethods reflect.Type, path []s
 			t = t.Elem()
 		}
 		if t.Kind() != reflect.Struct && t.Kind() != reflect.Map && t.Kind() != reflect.Slice && t.Kind() != reflect.Array {
-			paramGetMethod, exist := findParameterGetMethod(existingHandlerMethods, fieldType.Type)
+			paramGetMethod, exist := findParameterGetMethod(handlerParametersType, fieldType.Type)
 			if !exist {
 				return nil, fmt.Errorf("Type %s does not supported", fieldType.Type.Kind().String())
 			}
@@ -266,7 +267,7 @@ func processParamFields(fieldType, existingHandlerMethods reflect.Type, path []s
 				t = t.Elem()
 			}
 			if t.Kind() == reflect.Struct {
-				parameter.Fields, err = processParamFields(t, existingHandlerMethods, path, false)
+				parameter.Fields, err = processParamFields(t, handlerParametersType, path, false)
 				if err != nil {
 					return nil, err
 				}
@@ -302,13 +303,18 @@ func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
 	return hm.handlerVersions[route]
 }
 
-func (hm *HandlersManager) UnmarshalParameters(ctx context.Context, handler *handlerVersion, parameters IHandlerParameters) (reflect.Value, error) {
-	if err := parameters.Parse(); err != nil {
+func (*HandlersManager) UnmarshalParameters(ctx context.Context, handler *handlerVersion,
+	handlerParameters IHandlerParameters) (reflect.Value, error) {
+	return unmarshalRequest(handler.Request, handlerParameters)
+}
+
+func unmarshalRequest(request *handlerRequest, handlerParameters IHandlerParameters) (reflect.Value, error) {
+	if err := handlerParameters.Parse(); err != nil {
 		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
 	}
-	resPtr := reflect.New(handler.Request.Type)
+	resPtr := reflect.New(request.Type)
 	res := resPtr.Elem()
-	err := unmarshalParameters(res, parameters, handler.Request.Fields, handler.Request.Type)
+	err := unmarshalParameters(res, handlerParameters, request.Fields, request.Type)
 	if err != nil {
 		return reflect.ValueOf(nil), &CallHandlerError{ErrorInParameters, err}
 	}
@@ -383,8 +389,10 @@ func (hm *HandlersManager) getHandlerByPath(path string) *handlerEntity {
 	return hm.handlers[path]
 }
 
-func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []handlerParameter, parametersStructType reflect.Type) error {
-	existingHandlerMethods := reflect.TypeOf(handlerParameters)
+func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []handlerParameter,
+	parametersStructType reflect.Type) error {
+
+	handlerParametersType := reflect.TypeOf(handlerParameters)
 
 	for _, param := range parameters {
 		if !handlerParameters.IsExists(param.Path, param.GetKey()) {
@@ -445,7 +453,7 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 			}
 
 		} else {
-			method := existingHandlerMethods.Method(param.getMethod.Index)
+			method := handlerParametersType.Method(param.getMethod.Index)
 			retValues := method.Func.Call([]reflect.Value{reflect.ValueOf(handlerParameters), reflect.ValueOf(param.Path), reflect.ValueOf(param.GetKey())})
 			if len(retValues) > 1 && !retValues[1].IsNil() {
 				return retValues[1].Interface().(error)
@@ -456,7 +464,9 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 	return nil
 }
 
-func createContainerValue(t reflect.Type, v interface{}, param handlerParameter, handlerParameters IHandlerParameters) (reflect.Value, error) {
+func createContainerValue(t reflect.Type, v interface{}, param handlerParameter,
+	handlerParameters IHandlerParameters) (reflect.Value, error) {
+
 	val := reflect.ValueOf(v)
 	if t.Kind() == reflect.Ptr {
 		t = val.Elem().Type()
@@ -473,7 +483,7 @@ func createContainerValue(t reflect.Type, v interface{}, param handlerParameter,
 	return val, nil
 }
 
-func findParameterGetMethod(handlerMethodsType reflect.Type, field reflect.Type) (reflect.Method, bool) {
+func findParameterGetMethod(handlerParametersType reflect.Type, field reflect.Type) (reflect.Method, bool) {
 	var name []rune
 	switch field.Kind() {
 	case reflect.Ptr:
@@ -483,6 +493,5 @@ func findParameterGetMethod(handlerMethodsType reflect.Type, field reflect.Type)
 	}
 	name[0] = unicode.ToUpper(name[0])
 	methodName := "Get" + string(name)
-
-	return handlerMethodsType.MethodByName(methodName)
+	return handlerParametersType.MethodByName(methodName)
 }

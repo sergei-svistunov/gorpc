@@ -120,7 +120,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	var paramsGetter gorpc.IHandlerParameters
 	if jsonRequest {
-		paramsGetter = &JsonParametersGetter{Req: req}
+		paramsGetter = &JsonParametersGetter{Req: req.Body}
 	} else {
 		paramsGetter = &ParametersGetter{Req: req}
 	}

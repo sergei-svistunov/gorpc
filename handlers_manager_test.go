@@ -1,6 +1,9 @@
 package gorpc
 
 import (
+	"encoding/json"
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -114,4 +117,108 @@ func (s *HandlersManagerSuite) TestHandlerManager_PrepareParametersWithError() {
 
 	_, err := s.hm.UnmarshalParameters(context.TODO(), hanlerVersion, pg)
 	s.Error(err)
+}
+
+func TestUnmarshalJsonParameters(t *testing.T) {
+	type Request struct {
+		IntField          int     `key:"int" json:"int" description:"int field"`
+		OptionalIntField  *int    `key:"opt_int" json:"opt_int,omitempty" description:"optional int field"`
+		BoolField         bool    `key:"bool" json:"bool" description:"bool field"`
+		OptionalBoolField *bool   `key:"opt_bool" json:"opt_bool,omitempty" description:"optional bool field"`
+		StrField          string  `key:"str" json:"str" description:"str field"`
+		OptionalStrField  *string `key:"opt_str" json:"opt_str,omitempty" description:"optional str field"`
+	}
+	request := &Request{
+		IntField:  1,
+		BoolField: true,
+		StrField:  "test",
+	}
+	err := unmarshalJsonParameters(t, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnmarshalOptionalJsonParameters(t *testing.T) {
+	type Request struct {
+		IntField          int     `key:"int" json:"int" description:"int field"`
+		OptionalIntField  *int    `key:"opt_int" json:"opt_int,omitempty" description:"optional int field"`
+		BoolField         bool    `key:"bool" json:"bool" description:"bool field"`
+		OptionalBoolField *bool   `key:"opt_bool" json:"opt_bool,omitempty" description:"optional bool field"`
+		StrField          string  `key:"str" json:"str" description:"str field"`
+		OptionalStrField  *string `key:"opt_str" json:"opt_str,omitempty" description:"optional str field"`
+	}
+	i := 2
+	b := true
+	s := "optional"
+	request := &Request{
+		IntField:          1,
+		OptionalIntField:  &i,
+		BoolField:         true,
+		OptionalBoolField: &b,
+		StrField:          "test",
+		OptionalStrField:  &s,
+	}
+	err := unmarshalJsonParameters(t, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnmarshalJsonParametersNested(t *testing.T) {
+	type Nested1 struct {
+		Foo int `key:"int" json:"int" description:"foo field"`
+	}
+	type Nested2 struct {
+		Foo *int `key:"int" json:"int" description:"optional foo field"`
+	}
+	type Request struct {
+		NestedField         Nested1             `key:"nested" json:"nested" description:"nested field"`
+		OptionalNestedField *Nested2            `key:"opt_nested" json:"opt_nested,omitempty" description:"nested field"`
+		NestedSlice         []Nested1           `key:"nested_slice" json:"nested_slice,omitempty" description:"nested slice"`
+		OptionalNestedSlice *[]Nested1          `key:"opt_nested_slice" json:"opt_nested_slice,omitempty" description:"nested slice"`
+		NestedMap           map[string]Nested1  `key:"nested_map" json:"nested_map" description:"nested map"`
+		OptionalNestedMap   *map[string]Nested1 `key:"opt_nested_map" json:"opt_nested_map,omitempty" description:"nested map"`
+	}
+	i := 1
+	request := &Request{
+		NestedField: Nested1{
+			Foo: 1,
+		},
+		OptionalNestedField: &Nested2{
+			Foo: &i,
+		},
+		NestedSlice: []Nested1{Nested1{1}, Nested1{1}},
+		NestedMap: map[string]Nested1{
+			"1": Nested1{1},
+			"2": Nested1{2},
+		},
+	}
+	err := unmarshalJsonParameters(t, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func unmarshalJsonParameters(t *testing.T, request interface{}) error {
+	handlerRequest, err := processRequestType(reflect.TypeOf(request), false)
+	if err != nil {
+		return err
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	requestValue, err := unmarshalRequest(handlerRequest, &JsonParametersGetter{
+		Req: string(body),
+	})
+	if err != nil {
+		return err
+	}
+
+	if !reflect.DeepEqual(request, requestValue.Interface()) {
+		return fmt.Errorf("Unmarshalled request is not equal to expected.\nExpected:%+v\nActual:%+v", request, requestValue.Interface())
+	}
+	return nil
 }

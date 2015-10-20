@@ -6,7 +6,7 @@ import (
 
 type handlerVersion struct {
 	Errors        []HandlerError
-	Request       handlerRequest
+	Request       *handlerRequest
 	Response      reflect.Type
 	Version       string
 	UseCache      bool

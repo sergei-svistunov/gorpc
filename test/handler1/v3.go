@@ -5,7 +5,7 @@ import "golang.org/x/net/context"
 type V3Request struct {
 	ReqInt      int                   `json:"req_int" key:"req_int" description:"Required integer argument"`
 	Nested      V3Nested              `json:"nested" key:"nested" description:"Nested field"`
-	Optional    *V3Optional           `json:"optional" key:"optional" description:"Optional field"`
+	Optional    *V3Optional           `json:"optional,omitempty" key:"optional" description:"Optional field"`
 	StringMap   map[string]string     `json:"strings" key:"strings" description:"Map field"`
 	StringSlice []string              `json:"slices" key:"slices" description:"Slice field"`
 	ObjMap      map[string]V3Optional `json:"obj_map" key:"obj_map" description:"Map field"`
@@ -13,7 +13,7 @@ type V3Request struct {
 }
 
 type V3Nested struct {
-	ReturnErrorID *int `json:"error_id" key:"error_id" description:"Handler returns error by id if defined"`
+	ReturnErrorID *int `json:"error_id,omitempty" key:"error_id" description:"Handler returns error by id if defined"`
 }
 
 type V3Optional struct {
