@@ -1,15 +1,16 @@
 package http_json
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"runtime"
 	"strings"
 	"time"
 
-	"bytes"
 	"github.com/sergei-svistunov/gorpc"
 	"golang.org/x/net/context"
 )
@@ -62,7 +63,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 
 		if r := recover(); r != nil {
-			trace := make([]byte, 1024)
+			trace := make([]byte, 16*1024)
 			n := runtime.Stack(trace, false)
 			trace = trace[:n]
 
@@ -104,8 +105,34 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ctx = h.callbacks.OnInitCtx(req)
 	}
 
-	params, paramsErr := h.hm.PrepareParameters(ctx, handler, &ParametersGetter{Req: req})
+	jsonRequest := (req.Header.Get("Content-Type") == "application/json")
+	if jsonRequest && req.Method != "POST" {
+		if h.callbacks.OnError != nil {
+			err := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorInvalidMethod,
+				Err:  errors.New(http.StatusText(http.StatusBadRequest)),
+			}
+			h.callbacks.OnError(ctx, w, req, nil, err)
+		}
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	var paramsGetter gorpc.IHandlerParameters
+	if jsonRequest {
+		paramsGetter = &JsonParametersGetter{Req: req.Body}
+	} else {
+		paramsGetter = &ParametersGetter{Req: req}
+	}
+	params, paramsErr := h.hm.UnmarshalParameters(ctx, handler, paramsGetter)
 	if paramsErr != nil {
+		if h.callbacks.OnError != nil {
+			grpcErr := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorInParameters,
+				Err:  paramsErr,
+			}
+			h.callbacks.OnError(ctx, w, req, resp, grpcErr)
+		}
 		http.Error(w, paramsErr.Error(), http.StatusBadRequest)
 		return
 	}
@@ -113,12 +140,13 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var cacheKey []byte
 	var cacheEntry *CacheEntry
 	if h.cache != nil && handler.UseCache {
-		var err error
 		if h.callbacks.GetCacheKey != nil {
 			cacheKey = h.callbacks.GetCacheKey(ctx, req, params.Interface())
 		} else {
+			var err error
 			cacheKey, err = json.Marshal(params.Interface())
 			if err != nil {
+				log.Print(err.Error())
 				cacheKey = nil
 			}
 		}

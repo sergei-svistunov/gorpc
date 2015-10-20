@@ -6,27 +6,31 @@ type IHandler interface {
 }
 
 type IHandlerParameters interface {
-	IsExists(string) bool
+	Fork(m map[string]interface{}) interface{}
+	Parse() error
 
-	GetString(string) (string, error)
+	IsExists([]string, string) bool
 
-	GetBool(string) (bool, error)
+	GetString([]string, string) (string, error)
 
-	GetUint(string) (uint, error)
-	GetByte(string) (byte, error)
-	GetUint8(string) (uint8, error)
-	GetUint16(string) (uint16, error)
-	GetUint32(string) (uint32, error)
-	GetUint64(string) (uint64, error)
+	GetBool([]string, string) (bool, error)
 
-	GetInt(string) (int, error)
-	GetInt8(string) (int8, error)
-	GetInt16(string) (int16, error)
-	GetInt32(string) (int32, error)
-	GetInt64(string) (int64, error)
+	GetUint([]string, string) (uint, error)
+	GetByte([]string, string) (byte, error)
+	GetUint8([]string, string) (uint8, error)
+	GetUint16([]string, string) (uint16, error)
+	GetUint32([]string, string) (uint32, error)
+	GetUint64([]string, string) (uint64, error)
 
-	GetFloat32(string) (float32, error)
-	GetFloat64(string) (float64, error)
+	GetInt([]string, string) (int, error)
+	GetInt8([]string, string) (int8, error)
+	GetInt16([]string, string) (int16, error)
+	GetInt32([]string, string) (int32, error)
+	GetInt64([]string, string) (int64, error)
 
-	GetStringSlice(string) []string
+	GetFloat32([]string, string) (float32, error)
+	GetFloat64([]string, string) (float64, error)
+
+	TraverseSlice(path []string, name string, h func(i int, v interface{}) error) (bool, error)
+	TraverseMap(path []string, name string, h func(k string, v interface{}) error) (bool, error)
 }
