@@ -233,15 +233,15 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 }
 
 func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type) error {
-	if basicType.Kind().String() == `slice` {
+	if basicType.Kind() == reflect.Slice {
 		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem())
-	} else if basicType.Kind().String() == `ptr` {
+	} else if basicType.Kind() == reflect.Ptr {
 		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem())
 	} else if len(basicType.PkgPath()) == 0 {
 		return nil
 	} else if basicType.PkgPath() != packagePath {
 		return errors.New(`Structure must be defined in the same package`)
-	} else if basicType.Kind().String() == `struct` {
+	} else if basicType.Kind() == reflect.Struct {
 		for i := 0; i < basicType.NumField(); i++ {
 			err := checkStructureIsInTheSamePackage(packagePath, basicType.Field(i).Type)
 			if err != nil {
