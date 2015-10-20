@@ -124,7 +124,6 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		hm.handlerVersions[route] = version
 
 		_, version.UseCache = handlerType.MethodByName(handlerMethodPrefix + "UseCache")
-		_, flatRequest := handlerType.MethodByName(handlerMethodPrefix + "ConsumeFlatRequest")
 
 		if vMethodType.Type.NumOut() != 2 {
 			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)}
@@ -138,7 +137,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		version.Response = vMethodType.Type.Out(0)
 
 		var err error
-		version.Request, err = processRequestType(paramsType, flatRequest)
+		version.Request, err = processRequestType(paramsType)
 		if err != nil {
 			return fmt.Errorf("%s (handler %s, version number %d)", err.Error(), handlerPath, handlerVersion)
 		}
@@ -187,19 +186,20 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	return nil
 }
 
-func processRequestType(requestType reflect.Type, flat bool) (*handlerRequest, error) {
+func processRequestType(requestType reflect.Type) (*handlerRequest, error) {
 	handlerParametersType := reflect.TypeOf(new(IHandlerParameters)).Elem()
 
 	request := &handlerRequest{
 		Type: requestType,
-		Flat: flat,
+		// assume it's flat otherwise we set it to false in processParamFields
+		Flat: true,
 	}
 	if request.Type.Kind() == reflect.Ptr {
 		request.Type = request.Type.Elem()
 	}
 
 	var err error
-	request.Fields, err = processParamFields(request.Type, handlerParametersType, nil, request.Flat)
+	request.Fields, err = processParamFields(request, request.Type, handlerParametersType, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +207,7 @@ func processRequestType(requestType reflect.Type, flat bool) (*handlerRequest, e
 	return request, nil
 }
 
-func processParamFields(fieldType, handlerParametersType reflect.Type, path []string, flat bool) ([]handlerParameter, error) {
+func processParamFields(request *handlerRequest, fieldType, handlerParametersType reflect.Type, path []string) ([]handlerParameter, error) {
 	var parameters []handlerParameter
 	if fieldType.Kind() == reflect.Ptr {
 		fieldType = fieldType.Elem()
@@ -249,10 +249,6 @@ func processParamFields(fieldType, handlerParametersType reflect.Type, path []st
 			parameter.getMethod = paramGetMethod
 
 		} else {
-			if flat {
-				return nil, fmt.Errorf("Deep nesting is not supported, type %s marked flat", fieldType.Name)
-			}
-
 			var path []string
 			if len(parameter.Path) > 0 {
 				path = append(path, parameter.Path...)
@@ -267,7 +263,8 @@ func processParamFields(fieldType, handlerParametersType reflect.Type, path []st
 				t = t.Elem()
 			}
 			if t.Kind() == reflect.Struct {
-				parameter.Fields, err = processParamFields(t, handlerParametersType, path, false)
+				parameter.Fields, err = processParamFields(request, t, handlerParametersType, path)
+				request.Flat = false
 				if err != nil {
 					return nil, err
 				}

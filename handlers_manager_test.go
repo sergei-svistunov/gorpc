@@ -201,7 +201,7 @@ func TestUnmarshalJsonParametersNested(t *testing.T) {
 }
 
 func unmarshalJsonParameters(t *testing.T, request interface{}) error {
-	handlerRequest, err := processRequestType(reflect.TypeOf(request), false)
+	handlerRequest, err := processRequestType(reflect.TypeOf(request))
 	if err != nil {
 		return err
 	}
