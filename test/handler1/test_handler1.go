@@ -1,7 +1,5 @@
 package handler1
 
-import ()
-
 type Handler struct {
 }
 

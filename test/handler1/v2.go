@@ -30,7 +30,7 @@ func (*Handler) V2ErrorsVar() *V2ErrorTypes {
 func (*Handler) V2(ctx context.Context, opts *v2Args) (*V2Res, error) {
 	if opts.ReturnErrorID == nil {
 		return &V2Res{
-			Int:    opts.ReqInt,
+			Int: opts.ReqInt,
 		}, nil
 	}
 

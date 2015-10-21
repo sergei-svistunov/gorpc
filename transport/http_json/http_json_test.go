@@ -57,7 +57,7 @@ func BenchmarkHttpJSON_CallWithRequiredArguments_Success(b *testing.B) {
 		b.Fatal(err.Error())
 	}
 
-	handler := NewAPIHandler(hm, &testCache{},APIHandlerCallbacks{})
+	handler := NewAPIHandler(hm, &testCache{}, APIHandlerCallbacks{})
 	request, _ := http.NewRequest("GET", "/test/handler1/v1/?req_int=123", nil)
 	recorder := httptest.NewRecorder()
 

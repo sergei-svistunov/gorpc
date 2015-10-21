@@ -276,7 +276,6 @@
 }
 .swagger-section .swagger-ui-wrap .footer {
   margin-top: 20px;
-  display: none;
 }
 .swagger-section .swagger-ui-wrap p.big,
 .swagger-section .swagger-ui-wrap div.big p {
@@ -807,6 +806,9 @@
 .swagger-section .swagger-ui-wrap ul#resources li.resource ul.endpoints li.endpoint ul.operations li.operation div.content form input[type='text'].error {
   outline: 2px solid black;
   outline-color: #cc0000;
+}
+.swagger-section .swagger-ui-wrap ul#resources li.resource ul.endpoints li.endpoint ul.operations li.operation div.content form select[name='parameterContentType'] {
+  max-width: 300px;
 }
 .swagger-section .swagger-ui-wrap ul#resources li.resource ul.endpoints li.endpoint ul.operations li.operation div.content div.response div.block pre {
   font-family: "Anonymous Pro", "Menlo", "Consolas", "Bitstream Vera Sans Mono", "Courier New", monospace;
