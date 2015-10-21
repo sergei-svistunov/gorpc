@@ -109,6 +109,11 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return fmt.Errorf("Type of opts for version number %d of handler %s must be Ptr to Struct", handlerVersion, handlerPath)
 		}
 
+		err := checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), paramsType)
+		if err != nil {
+			return fmt.Errorf("Handler '%s' version '%s' parameter: %s", handlerPath, vMethodType.Name, err)
+		}
+
 		version := &versions[i]
 		version.Version = "v" + strconv.Itoa(v)
 		version.path = handlerPath
@@ -136,7 +141,11 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		var err error
+		err = checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), version.Response)
+		if err != nil {
+			return fmt.Errorf("Handler '%s' version '%s' return value: %s", handlerPath, vMethodType.Name, err)
+		}
+
 		version.Request, err = processRequestType(paramsType)
 		if err != nil {
 			return fmt.Errorf("%s (handler %s, version number %d)", err.Error(), handlerPath, handlerVersion)
@@ -184,6 +193,28 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	}
 
 	return nil
+}
+
+func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type) error {
+	if basicType.Kind() == reflect.Slice {
+		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem())
+	} else if basicType.Kind() == reflect.Ptr {
+		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem())
+	} else if len(basicType.PkgPath()) == 0 {
+		return nil
+	} else if basicType.PkgPath() != packagePath {
+		return errors.New(`Structure must be defined in the same package`)
+	} else if basicType.Kind() == reflect.Struct {
+		for i := 0; i < basicType.NumField(); i++ {
+			err := checkStructureIsInTheSamePackage(packagePath, basicType.Field(i).Type)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return errors.New(`Unreachable code`)
 }
 
 func processRequestType(requestType reflect.Type) (*handlerRequest, error) {

@@ -10,6 +10,8 @@ import (
 	"golang.org/x/net/context"
 
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
+	test_handler_foreign_arguments "github.com/sergei-svistunov/gorpc/test/handler_foreign_arguments"
+	test_handler_foreign_return_values "github.com/sergei-svistunov/gorpc/test/handler_foreign_return_values"
 )
 
 // Suite definition
@@ -22,6 +24,14 @@ func (s *HandlersManagerSuite) SetupTest() {
 	s.hm = NewHandlersManager("github.com/sergei-svistunov/gorpc", HandlersManagerCallbacks{})
 
 	s.NoError(s.hm.RegisterHandler(test_handler1.NewHandler()))
+
+	err := s.hm.RegisterHandler(test_handler_foreign_arguments.NewHandler())
+	s.Error(err)
+	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' parameter: Structure must be defined in the same package`, `/test/handler_foreign_arguments`, `V1`))
+
+	err = s.hm.RegisterHandler(test_handler_foreign_return_values.NewHandler())
+	s.Error(err)
+	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' return value: Structure must be defined in the same package`, `/test/handler_foreign_return_values`, `V1`))
 }
 
 func TestRunSuite(t *testing.T) {
