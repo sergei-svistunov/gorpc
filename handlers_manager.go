@@ -116,6 +116,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 
 		version := &versions[i]
 		version.Version = "v" + strconv.Itoa(v)
+		version.Parameters = make([]HandlerParameter, paramsType.Elem().NumField())
 		version.path = handlerPath
 		version.method = vMethodType
 		version.handlerStruct = h
@@ -238,15 +239,15 @@ func processRequestType(requestType reflect.Type) (*handlerRequest, error) {
 	return request, nil
 }
 
-func processParamFields(request *handlerRequest, fieldType, handlerParametersType reflect.Type, path []string) ([]handlerParameter, error) {
-	var parameters []handlerParameter
+func processParamFields(request *handlerRequest, fieldType, handlerParametersType reflect.Type, path []string) ([]HandlerParameter, error) {
+	var parameters []HandlerParameter
 	if fieldType.Kind() == reflect.Ptr {
 		fieldType = fieldType.Elem()
 	}
 	for i := 0; i < fieldType.NumField(); i++ {
 		fieldType := fieldType.Field(i)
 
-		parameter := handlerParameter{
+		parameter := HandlerParameter{
 			Key:         fieldType.Tag.Get("key"),
 			Path:        path,
 			Name:        fieldType.Name,
@@ -417,7 +418,7 @@ func (hm *HandlersManager) getHandlerByPath(path string) *handlerEntity {
 	return hm.handlers[path]
 }
 
-func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []handlerParameter,
+func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []HandlerParameter,
 	parametersStructType reflect.Type) error {
 
 	handlerParametersType := reflect.TypeOf(handlerParameters)
@@ -492,7 +493,7 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 	return nil
 }
 
-func createContainerValue(t reflect.Type, v interface{}, param handlerParameter,
+func createContainerValue(t reflect.Type, v interface{}, param HandlerParameter,
 	handlerParameters IHandlerParameters) (reflect.Value, error) {
 
 	val := reflect.ValueOf(v)
