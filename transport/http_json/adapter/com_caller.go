@@ -8,7 +8,6 @@ func init() {
 
 var callerImports = []string{
 	"fmt",
-	"runtime",
 	"golang.org/x/net/context",
 }
 

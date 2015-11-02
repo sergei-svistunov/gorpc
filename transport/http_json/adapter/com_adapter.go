@@ -1,12 +1,20 @@
 package adapter
 
+import (
+	"bytes"
+	"fmt"
+	"github.com/sergei-svistunov/gorpc"
+	"regexp"
+	"strings"
+)
+
 func init() {
 	RegisterComponent(
 		NewComponent(
 			">>>STATIC_LOGIC<<<",
 			mainImports,
 			staticLogicTemplate,
-			prepareStaticLogic),
+			replaceServiceName),
 	)
 }
 
@@ -18,7 +26,7 @@ var mainImports = []string{
 	"net/url",
 	"strings",
 	"time",
-    "encoding/json",
+	"encoding/json",
 }
 
 var handlerCallFuncTemplate = `
@@ -39,9 +47,9 @@ type ExternalAPI struct {
 }
 
 type httpSessionResponse struct {
-	Result string      `+"`"+`json:"result"`+"`"+`
-	Data   json.RawMessage `+"`"+`json:"data"`+"`"+`
-	Error  string      `+"`"+`json:"error"`+"`"+`
+	Result string      ` + "`" + `json:"result"` + "`" + `
+	Data   json.RawMessage ` + "`" + `json:"data"` + "`" + `
+	Error  string      ` + "`" + `json:"error"` + "`" + `
 }
 
 type IBalancer interface{
@@ -121,7 +129,60 @@ func CreateRawURL(url, path string, values url.Values) string {
 
 `
 
-func prepareStaticLogic(codePtr *string) error {
-	// TODO replace service name in template
+func replaceServiceName(codePtr *[]byte) error {
+	if codePtr == nil {
+		return fmt.Errorf("Code pointer is nil")
+	}
+
+	*codePtr = regexp.MustCompilePOSIX(">>>SERVICE_NAME<<<").ReplaceAll(*codePtr, []byte(serviceName))
 	return nil
+}
+
+func generateAdapterMethods(structsBuf *bytes.Buffer) []byte {
+	result := &bytes.Buffer{}
+
+	for path, handlerInfo := range path2HandlerInfoMapping {
+		var method []byte
+		method = regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll([]byte(handlerCallFuncTemplate), []byte(path))
+		path = strings.Replace(path, "/", "_", -1) //TODO convert to CamelCaseName
+		method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(strings.Title(path)))
+		method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Output))
+		method = regexp.MustCompilePOSIX(">>>INPUT_PARAMS<<<").ReplaceAll(method, generateInputParamsRow(handlerInfo.Params, structsBuf))
+		method = regexp.MustCompilePOSIX(">>>MAPPED_INPUT_PARAMS<<<").ReplaceAll(method, generateMappedInputParamsString(handlerInfo.Params))
+
+		result.Write(method)
+	}
+
+	return result.Bytes()
+}
+
+func generateInputParamsRow(params []gorpc.HandlerParameter, additionalStructsBuf *bytes.Buffer) []byte {
+	var s string
+	for _, param := range params {
+		if param.RawType == nil {
+			// TODO log error?
+			//log.Errorf("Param %#v is nil", param)
+			continue
+		}
+		t, extraStructs := detectTypeName(param.RawType, nil)
+		s += (", " + param.Name + " " + t)
+		if len(extraStructs) > 0 {
+			for i := range extraStructs {
+				_, err := convertStructToCode(extraStructs[i], additionalStructsBuf, nil)
+				if err != nil {
+					// TODO log error?
+					panic(err)
+				}
+			}
+		}
+	}
+	return []byte(s)
+}
+
+func generateMappedInputParamsString(params []gorpc.HandlerParameter) []byte {
+	var s string
+	for _, param := range params {
+		s += ("\"" + param.GetKey() + "\": " + param.Name + ",\n")
+	}
+	return []byte(s)
 }
