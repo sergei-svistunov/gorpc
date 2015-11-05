@@ -25,8 +25,7 @@ type AdapterHandler struct {
 
 func NewJSONClientLibGeneratorHandler(hm *gorpc.HandlersManager) *AdapterHandler {
 	return &AdapterHandler{
-		hm:   hm,
-		code: nil,
+		hm: hm,
 	}
 }
 
@@ -49,13 +48,12 @@ func (h *AdapterHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	var err error
-	h.code, err = generateAdapterCode(h.hm)
+	code, err := generateAdapterCode(h.hm)
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		return
 	}
-	w.Write(h.code)
+	w.Write(code)
 }
 
 var usageInfo = `
@@ -140,6 +138,11 @@ func collectStructs(hm *gorpc.HandlersManager, structsBuf *bytes.Buffer, extraIm
 func convertStructToCode(t reflect.Type, codeBuf *bytes.Buffer, extraImports *[]string) (typeName string, err error) {
 	// ignore slice of new types because this type exactly new and we're collecting its content right now below
 	typeName, _ = detectTypeName(t, extraImports)
+	if strings.Contains(typeName, ".") {
+		// do not migrate external structs (type name with path)
+		return
+	}
+
 	var newInternalTypes []reflect.Type
 
 	defer func() {
@@ -245,7 +248,6 @@ func detectTypeName(t reflect.Type, extraImports *[]string) (name string, newTyp
 			name = t.String()
 		}
 
-		name = strings.Replace(name, ".", "_", -1)
 		name = strings.Replace(name, "-", "_", -1)
 
 		return name, newTypes
