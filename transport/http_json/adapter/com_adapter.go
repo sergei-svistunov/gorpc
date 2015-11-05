@@ -19,7 +19,6 @@ func init() {
 }
 
 var mainImports = []string{
-	`commonapi "lazada_api/common/api"`,
 	"golang.org/x/net/context",
 	"net/http",
 	"fmt",
@@ -29,8 +28,8 @@ var mainImports = []string{
 	"encoding/json",
 }
 
-var handlerCallFuncTemplate = `
-func (api *ExternalAPI) Call>>>HANDLER_NAME<<<(ctx context.Context>>>INPUT_PARAMS<<<) (>>>RETURNED_TYPE<<<, error) {
+var handlerCallFuncTemplate = []byte(`
+func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context>>>INPUT_PARAMS<<<) (>>>RETURNED_TYPE<<<, error) {
     var result >>>RETURNED_TYPE<<<
     params := map[string]interface{}{>>>MAPPED_INPUT_PARAMS<<<}
 
@@ -38,9 +37,9 @@ func (api *ExternalAPI) Call>>>HANDLER_NAME<<<(ctx context.Context>>>INPUT_PARAM
 	return result, err
 }
 
-`
+`)
 var staticLogicTemplate = `
-type ExternalAPI struct {
+type >>>API_NAME<<< struct {
 	client        *http.Client
 	serviceCaller *ExternalServiceCaller
 	ServiceName string
@@ -56,14 +55,14 @@ type IBalancer interface{
     Next() (string, error)
 }
 
-func NewExternalAPI(balancer IBalancer, venture string, environment string, apiTimeout int) *ExternalAPI {
+func New>>>API_NAME<<<(balancer IBalancer, apiTimeout int) *>>>API_NAME<<< {
 	serviceName := ">>>SERVICE_NAME<<<"
 
 	serviceCaller := &ExternalServiceCaller{
 		Name:           strings.Title(serviceName),
 		Balancer:       balancer,
 	}
-	return &ExternalAPI{
+	return &>>>API_NAME<<<{
 		client: &http.Client{
 			Transport: &http.Transport{
 				//DisableCompression: true,
@@ -76,12 +75,12 @@ func NewExternalAPI(balancer IBalancer, venture string, environment string, apiT
 	}
 }
 
-func (api *ExternalAPI) get(ctx context.Context, path string, params map[string]interface{}, buf interface{}) error {
+func (api *>>>API_NAME<<<) get(ctx context.Context, path string, params map[string]interface{}, buf interface{}) error {
 	values := ToURLValues(params)
 	return api.getWithValues(ctx, path, values, buf)
 }
 
-func (api *ExternalAPI) getWithValues(ctx context.Context, path string, values url.Values, buf interface{}) error {
+func (api *>>>API_NAME<<<) getWithValues(ctx context.Context, path string, values url.Values, buf interface{}) error {
     sessionRequest := &SessionRequest{Path: path, Params: values}
 	return api.serviceCaller.Call(ctx, sessionRequest, func(serviceURL string) (interface{}, error) {
 		r, err := http.NewRequest("GET", CreateRawURL(serviceURL, path, values), nil)
@@ -90,13 +89,7 @@ func (api *ExternalAPI) getWithValues(ctx context.Context, path string, values u
 		}
 
 		wrapper := httpSessionResponse{}
-		if err := commonapi.Do(api.client, r, &wrapper); err != nil {
-			if apiErr, ok := err.(commonapi.ErrorResponse); ok {
-				err = ServiceError{
-					Code:    int(apiErr.ErrorCode),
-					Message: apiErr.ErrorMessage,
-				}
-			}
+		if err := Do(api.client, r, &wrapper); err != nil {
 			return nil, err
 		}
         if err := json.Unmarshal(wrapper.Data, buf); err != nil {
@@ -127,6 +120,48 @@ func CreateRawURL(url, path string, values url.Values) string {
 	return rawURL
 }
 
+func Do(client *http.Client, request *http.Request, buf interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in request %q: %v", request.RequestURI, r)
+		}
+	}()
+
+	// Run
+	var response *http.Response
+	if response, err = client.Do(request); err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	// Handle error
+	if response.StatusCode != http.StatusOK {
+	    switch response.StatusCode {
+	    // TODO separate error types for different status codes (and different callbacks)
+	    /*
+        case http.StatusForbidden:
+        case http.StatusBadGateway:
+        case http.StatusBadRequest:
+        */
+        default:
+            return fmt.Errorf("Request %q failed. Server returns status code %d", request.RequestURI, response.StatusCode)
+        }
+	}
+
+	// Read response
+	var result []byte
+	if result, err = ioutil.ReadAll(response.Body); err != nil {
+		return err
+	}
+
+	if err = json.Unmarshal(result, buf); err != nil {
+		return fmt.Errorf("request %q failed to decode response %q: %v", request.RequestURI, string(result), err)
+	}
+
+	return nil
+}
+
+
 `
 
 func replaceServiceName(codePtr *[]byte) error {
@@ -134,7 +169,9 @@ func replaceServiceName(codePtr *[]byte) error {
 		return fmt.Errorf("Code pointer is nil")
 	}
 
-	*codePtr = regexp.MustCompilePOSIX(">>>SERVICE_NAME<<<").ReplaceAll(*codePtr, []byte(serviceName))
+	*codePtr = regexp.MustCompilePOSIX(">>>SERVICE_NAME<<<").ReplaceAll(*codePtr, []byte(strings.ToLower(serviceName)))
+	*codePtr = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(*codePtr, []byte(strings.Title(serviceName)))
+	handlerCallFuncTemplate = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(handlerCallFuncTemplate, []byte(strings.Title(serviceName)))
 	return nil
 }
 
@@ -143,9 +180,9 @@ func generateAdapterMethods(structsBuf *bytes.Buffer) []byte {
 
 	for path, handlerInfo := range path2HandlerInfoMapping {
 		var method []byte
-		method = regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll([]byte(handlerCallFuncTemplate), []byte(path))
-		path = strings.Replace(path, "/", "_", -1) //TODO convert to CamelCaseName
-		method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(strings.Title(path)))
+		method = regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallFuncTemplate, []byte(path))
+		path = strings.Replace(strings.Title(path), "/", "", -1) //TODO convert to CamelCaseName
+		method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(path))
 		method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Output))
 		method = regexp.MustCompilePOSIX(">>>INPUT_PARAMS<<<").ReplaceAll(method, generateInputParamsRow(handlerInfo.Params, structsBuf))
 		method = regexp.MustCompilePOSIX(">>>MAPPED_INPUT_PARAMS<<<").ReplaceAll(method, generateMappedInputParamsString(handlerInfo.Params))
