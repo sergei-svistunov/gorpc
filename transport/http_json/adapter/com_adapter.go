@@ -26,9 +26,11 @@ var mainImports = []string{
 	"strings",
 	"time",
 	"encoding/json",
+	"bytes",
+	"io/ioutil",
 }
 
-var handlerCallFuncTemplate = []byte(`
+var handlerCallGetFuncTemplate = []byte(`
 func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context>>>INPUT_PARAMS<<<) (>>>RETURNED_TYPE<<<, error) {
     var result >>>RETURNED_TYPE<<<
     params := map[string]interface{}{>>>MAPPED_INPUT_PARAMS<<<}
@@ -38,30 +40,31 @@ func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context>>>INPUT_PARAMS
 }
 
 `)
-var staticLogicTemplate = `
-type >>>API_NAME<<< struct {
-	client        *http.Client
-	serviceCaller *ExternalServiceCaller
-	ServiceName string
-}
 
+var staticLogicTemplate = `
 type httpSessionResponse struct {
 	Result string      ` + "`" + `json:"result"` + "`" + `
 	Data   json.RawMessage ` + "`" + `json:"data"` + "`" + `
 	Error  string      ` + "`" + `json:"error"` + "`" + `
 }
 
+type sessionRequest struct {
+	URL    string
+	Path   string
+	Params interface{}
+}
+
 type IBalancer interface{
     Next() (string, error)
 }
 
-func New>>>API_NAME<<<(balancer IBalancer, apiTimeout int) *>>>API_NAME<<< {
-	serviceName := ">>>SERVICE_NAME<<<"
+type >>>API_NAME<<< struct {
+	client        *http.Client
+	ServiceName string
+	balancer IBalancer
+}
 
-	serviceCaller := &ExternalServiceCaller{
-		Name:           strings.Title(serviceName),
-		Balancer:       balancer,
-	}
+func New>>>API_NAME<<<(balancer IBalancer, apiTimeout int, serviceName string) *>>>API_NAME<<< {
 	return &>>>API_NAME<<<{
 		client: &http.Client{
 			Transport: &http.Transport{
@@ -70,26 +73,34 @@ func New>>>API_NAME<<<(balancer IBalancer, apiTimeout int) *>>>API_NAME<<< {
 			},
 			Timeout: time.Duration(apiTimeout) * time.Second,
 		},
-		serviceCaller: serviceCaller,
 		ServiceName:   serviceName,
+		balancer: balancer,
 	}
 }
 
 func (api *>>>API_NAME<<<) get(ctx context.Context, path string, params map[string]interface{}, buf interface{}) error {
-	values := ToURLValues(params)
+	values := toURLValues(params)
 	return api.getWithValues(ctx, path, values, buf)
 }
 
 func (api *>>>API_NAME<<<) getWithValues(ctx context.Context, path string, values url.Values, buf interface{}) error {
-    sessionRequest := &SessionRequest{Path: path, Params: values}
-	return api.serviceCaller.Call(ctx, sessionRequest, func(serviceURL string) (interface{}, error) {
-		r, err := http.NewRequest("GET", CreateRawURL(serviceURL, path, values), nil)
+    apiURL, err := api.balancer.Next()
+    if err != nil {
+        return err
+    }
+    sessionRequest := &sessionRequest{
+        Path: path,
+        Params: values,
+        URL: apiURL,
+    }
+	return api.call(ctx, sessionRequest, func(serviceURL string) (interface{}, error) {
+		r, err := http.NewRequest("GET", createRawURL(serviceURL, path, values), nil)
 		if err != nil {
 			return nil, err
 		}
 
 		wrapper := httpSessionResponse{}
-		if err := Do(api.client, r, &wrapper); err != nil {
+		if err := do(api.client, r, &wrapper); err != nil {
 			return nil, err
 		}
         if err := json.Unmarshal(wrapper.Data, buf); err != nil {
@@ -100,8 +111,53 @@ func (api *>>>API_NAME<<<) getWithValues(ctx context.Context, path string, value
 	})
 }
 
-// ToURLValues converts map to url query.
-func ToURLValues(params map[string]interface{}) url.Values {
+func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}) error {
+    apiURL, err := api.balancer.Next()
+    if err != nil {
+        return err
+    }
+	sessionRequest := &sessionRequest{
+	    Path: path,
+	    Params: data,
+	    URL: apiURL,
+    }
+	return api.call(ctx, sessionRequest, func(serviceURL string) (interface{}, error) {
+		b := bytes.NewBuffer(nil)
+		encoder := json.NewEncoder(b)
+		if err := encoder.Encode(data); err != nil {
+			return nil, fmt.Errorf("could not marshal data %+v: %v", data, err)
+		}
+
+		r, err := http.NewRequest("POST", createRawURL(serviceURL, path, nil), b)
+		if err != nil {
+			return nil, err
+		}
+		if err := do(api.client, r, buf); err != nil {
+			return nil, err
+		}
+		return buf, nil
+	})
+}
+
+func (api *>>>API_NAME<<<) call(ctx context.Context, sessionRequest *sessionRequest, caller func(string) (interface{}, error)) (err error) {
+    if sessionRequest.URL == "" {
+        return fmt.Errorf("Service URL is not defined")
+    }
+
+    defer func() {
+        if r := recover(); r != nil {
+            err = fmt.Errorf("panic while calling %q service: %v", api.ServiceName, r)
+        }
+    }()
+
+    if _, err = caller(sessionRequest.URL); err != nil {
+        return
+    }
+
+    return
+}
+
+func toURLValues(params map[string]interface{}) url.Values {
 	var values url.Values
 	if len(params) > 0 {
 		values = url.Values{}
@@ -112,7 +168,7 @@ func ToURLValues(params map[string]interface{}) url.Values {
 	return values
 }
 
-func CreateRawURL(url, path string, values url.Values) string {
+func createRawURL(url, path string, values url.Values) string {
 	rawURL := strings.TrimRight(url, "/") + "/" + strings.TrimLeft(path, "/")
 	if len(values) > 0 {
 		rawURL += "?" + values.Encode()
@@ -120,7 +176,7 @@ func CreateRawURL(url, path string, values url.Values) string {
 	return rawURL
 }
 
-func Do(client *http.Client, request *http.Request, buf interface{}) (err error) {
+func do(client *http.Client, request *http.Request, buf interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic in request %q: %v", request.RequestURI, r)
@@ -171,7 +227,8 @@ func replaceServiceName(codePtr *[]byte) error {
 
 	*codePtr = regexp.MustCompilePOSIX(">>>SERVICE_NAME<<<").ReplaceAll(*codePtr, []byte(strings.ToLower(serviceName)))
 	*codePtr = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(*codePtr, []byte(strings.Title(serviceName)))
-	handlerCallFuncTemplate = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(handlerCallFuncTemplate, []byte(strings.Title(serviceName)))
+	handlerCallGetFuncTemplate = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(handlerCallGetFuncTemplate, []byte(strings.Title(serviceName)))
+	handlerCallPostFuncTemplate = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(handlerCallPostFuncTemplate, []byte(strings.Title(serviceName)))
 	return nil
 }
 
@@ -180,18 +237,35 @@ func generateAdapterMethods(structsBuf *bytes.Buffer) []byte {
 
 	for path, handlerInfo := range path2HandlerInfoMapping {
 		var method []byte
-		method = regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallFuncTemplate, []byte(path))
+		/*
+			method = regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallGetFuncTemplate, []byte(path))
+			path = strings.Replace(strings.Title(path), "/", "", -1) //TODO convert to CamelCaseName
+			method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(path))
+			method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Output))
+			method = regexp.MustCompilePOSIX(">>>INPUT_PARAMS<<<").ReplaceAll(method, generateInputParamsRow(handlerInfo.Params, structsBuf))
+			method = regexp.MustCompilePOSIX(">>>MAPPED_INPUT_PARAMS<<<").ReplaceAll(method, generateMappedInputParamsString(handlerInfo.Params))
+		*/
+		method = regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallPostFuncTemplate, []byte(path))
 		path = strings.Replace(strings.Title(path), "/", "", -1) //TODO convert to CamelCaseName
 		method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(path))
+		method = regexp.MustCompilePOSIX(">>>INPUT_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Input))
 		method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Output))
-		method = regexp.MustCompilePOSIX(">>>INPUT_PARAMS<<<").ReplaceAll(method, generateInputParamsRow(handlerInfo.Params, structsBuf))
-		method = regexp.MustCompilePOSIX(">>>MAPPED_INPUT_PARAMS<<<").ReplaceAll(method, generateMappedInputParamsString(handlerInfo.Params))
 
 		result.Write(method)
 	}
 
 	return result.Bytes()
 }
+
+var handlerCallPostFuncTemplate = []byte(`
+func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context, data >>>INPUT_TYPE<<<) (>>>RETURNED_TYPE<<<, error) {
+    var result >>>RETURNED_TYPE<<<
+
+    err := api.set(ctx, ">>>HANDLER_PATH<<<", data, &result)
+	return result, err
+}
+
+`)
 
 func generateInputParamsRow(params []gorpc.HandlerParameter, additionalStructsBuf *bytes.Buffer) []byte {
 	var s string

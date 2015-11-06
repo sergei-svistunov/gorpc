@@ -67,6 +67,7 @@ Possible get params:
 type handlerInfo struct {
 	Params []gorpc.HandlerParameter `json:"params"`
 	Output string                   `json:"output"`
+	Input  string                   `json:"input"`
 }
 
 var path2HandlerInfoMapping = map[string]handlerInfo{}
@@ -112,8 +113,6 @@ import (
 
 >>>STATIC_LOGIC<<<
 
->>>CALLER<<<
-
 >>>STRUCTS<<<
 
 `)
@@ -126,9 +125,14 @@ func collectStructs(hm *gorpc.HandlersManager, structsBuf *bytes.Buffer, extraIm
 			if err != nil {
 				return err
 			}
+			handlerIntputTypeName, err := convertStructToCode(v.GetMethod().Type.In(2), structsBuf, extraImports)
+			if err != nil {
+				return err
+			}
 			path2HandlerInfoMapping[path+"/"+v.GetVersion()] = handlerInfo{
 				Params: v.Request.Fields,
 				Output: handlerOutputTypeName,
+				Input:  handlerIntputTypeName,
 			}
 		}
 	}
