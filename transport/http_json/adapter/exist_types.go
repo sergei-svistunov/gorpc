@@ -1,15 +1,15 @@
 package adapter
 
-type ExistStructs []string
+type StringsStack []string
 
-func (es *ExistStructs) Add(s string) {
-    *es = append(*es, s)
+func (ss *StringsStack) Add(s string) {
+	*ss = append(*ss, s)
 }
-func (es *ExistStructs) AlreadyExist(s string) bool {
-    for i := range *es {
-        if s == (*es)[i] {
-            return true
-        }
-    }
-    return false
+func (ss *StringsStack) AlreadyExist(s string) bool {
+	for i := range *ss {
+		if s == (*ss)[i] {
+			return true
+		}
+	}
+	return false
 }
