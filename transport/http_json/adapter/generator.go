@@ -20,7 +20,6 @@ type HttpJsonLibGenerator struct {
 	hm                      *gorpc.HandlersManager
 	pkgName                 string
 	serviceName             string
-	internalPkgs            []string
 	path2HandlerInfoMapping map[string]handlerInfo
 	collectedStructs        StringsStack
 }
@@ -38,9 +37,6 @@ func NewHttpJsonLibGenerator(hm *gorpc.HandlersManager, packageName, serviceName
 	if serviceName != "" {
 		generator.serviceName = serviceName
 	}
-
-	// TODO collect internal pathes from HM
-	generator.internalPkgs = []string{"lazada_api"}
 
 	return &generator
 }
@@ -96,6 +92,7 @@ func (g *HttpJsonLibGenerator) generateAdapterMethods(structsBuf *bytes.Buffer) 
 		var method []byte
 		method = regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallPostFuncTemplate, []byte(path))
 		path = strings.Replace(strings.Title(path), "/", "", -1)
+		path = strings.Replace(path, "_", "", -1)
 		method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(path))
 		method = regexp.MustCompilePOSIX(">>>INPUT_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Input))
 		method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Output))
@@ -107,11 +104,10 @@ func (g *HttpJsonLibGenerator) generateAdapterMethods(structsBuf *bytes.Buffer) 
 	return result.Bytes()
 }
 
-func (g *HttpJsonLibGenerator) isInternalType(pkgPath string) bool {
-	for _, pkgName := range g.internalPkgs {
-		if strings.HasPrefix(pkgPath, pkgName) {
-			return true
-		}
+func (g *HttpJsonLibGenerator) needToMigratePkgStructs(pkgPath string) bool {
+	// TODO this check was removed and all types with non-empty package path will be migrated in library code
+	if pkgPath != "" {
+		return true
 	}
 	return false
 }
@@ -204,8 +200,9 @@ func (g *HttpJsonLibGenerator) detectTypeName(t reflect.Type, extraImports *[]st
 	if name != "" {
 		// for custom types make unique names using package path
 		// because different packages can contains structs with same names
-		if g.isInternalType(t.PkgPath()) {
+		if g.needToMigratePkgStructs(t.PkgPath()) {
 			path := strings.Replace(t.PkgPath(), "/", "_", -1)
+			path = strings.Replace(path, ".", "", -1)
 			path = strings.Title(path)
 
 			name = path + "_" + strings.Title(name)
@@ -240,7 +237,7 @@ func (g *HttpJsonLibGenerator) detectTypeName(t reflect.Type, extraImports *[]st
 		if embeded != nil {
 			newTypes = append(newTypes, embeded...)
 		}
-		if g.isInternalType(t.Elem().PkgPath()) {
+		if g.needToMigratePkgStructs(t.Elem().PkgPath()) {
 			if !g.collectedStructs.AlreadyExist(name) {
 				newTypes = []reflect.Type{t}
 				g.collectedStructs.Add(name)
