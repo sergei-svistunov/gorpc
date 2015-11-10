@@ -146,7 +146,11 @@ func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *byte
 				str += ("	" + fieldName)
 			} else {
 				str += ("	" + field.Name + " " + fieldName)
-				if jsonTag := field.Tag.Get("json"); jsonTag != "" {
+				jsonTag := field.Tag.Get("json")
+				if jsonTag == "" {
+					jsonTag = field.Tag.Get("key")
+				}
+				if jsonTag != "" {
 					str += (" `json:\"" + jsonTag + "\"`")
 				}
 			}

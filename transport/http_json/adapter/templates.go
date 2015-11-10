@@ -85,6 +85,8 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 		if err != nil {
 			return nil, err
 		}
+		r.Header.Set("Content-Type", "application/json")
+
 		if err := do(api.client, r, buf); err != nil {
 			return nil, err
 		}
@@ -121,7 +123,7 @@ func createRawURL(url, path string, values url.Values) string {
 func do(client *http.Client, request *http.Request, buf interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic in request %q: %v", request.RequestURI, r)
+			err = fmt.Errorf("panic in request %q: %v", request.URL.RequestURI(), r)
 		}
 	}()
 
@@ -142,7 +144,7 @@ func do(client *http.Client, request *http.Request, buf interface{}) (err error)
         case http.StatusBadRequest:
         */
         default:
-            return fmt.Errorf("Request %q failed. Server returns status code %d", request.RequestURI, response.StatusCode)
+            return fmt.Errorf("Request %q failed. Server returns status code %d", request.URL.RequestURI(), response.StatusCode)
         }
 	}
 
@@ -152,9 +154,14 @@ func do(client *http.Client, request *http.Request, buf interface{}) (err error)
 		return err
 	}
 
-	if err = json.Unmarshal(result, buf); err != nil {
-		return fmt.Errorf("request %q failed to decode response %q: %v", request.RequestURI, string(result), err)
-	}
+    mainResp := httpSessionResponse{}
+
+    if err = json.Unmarshal(result, &mainResp); err != nil {
+        return fmt.Errorf("request %q failed to decode response %q: %v", request.URL.RequestURI(), string(result), err)
+    }
+    if err = json.Unmarshal(mainResp.Data, buf); err != nil {
+        return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
+    }
 
 	return nil
 }

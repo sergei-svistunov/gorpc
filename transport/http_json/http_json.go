@@ -105,7 +105,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ctx = h.callbacks.OnInitCtx(req)
 	}
 
-	jsonRequest := (req.Header.Get("Content-Type") == "application/json")
+	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
 	if jsonRequest && req.Method != "POST" {
 		if h.callbacks.OnError != nil {
 			err := &gorpc.CallHandlerError{
