@@ -62,6 +62,7 @@ func New>>>API_NAME<<<(client *http.Client, balancer IBalancer, callbacks Callba
 
 >>>CLIENT_STRUCTS<<<
 
+// TODO: duplicates http_json.httpSessionResponse
 type httpSessionResponse struct {
 	Result string      ` + "`" + `json:"result"` + "`" + ` //OK or ERROR
 	Data   json.RawMessage ` + "`" + `json:"data"` + "`" + `
@@ -170,7 +171,7 @@ func doRequest(client *http.Client, request *http.Request, buf interface{}) erro
 	if mainResp.Result == "ERROR" {
 		return ServiceError{
 			Code: mainResp.Error,
-			Message: "TODO", // TODO: extract error message from handler info, handle not found/unknown error
+			Message: string(mainResp.Data), // TODO: extract error message from handler info, handle not found/unknown error
 		}
 	}
 

@@ -156,11 +156,11 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		_, version.UseCache = handlerType.MethodByName(handlerMethodPrefix + "UseCache")
 
 		if vMethodType.Type.NumOut() != 2 {
-			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)}
+			return fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)
 		}
 
 		if vMethodType.Type.Out(1).String() != "error" {
-			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Second output parameter should be error (handler %s version number %d)", handlerPath, handlerVersion)}
+			return ErrorInParameters, fmt.Errorf("Second output parameter should be error (handler %s version number %d)", handlerPath, handlerVersion)
 		}
 
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
@@ -201,7 +201,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 				handlerError := HandlerError{
 					UserMessage: errText,
 					Err:         errors.New(errText),
-					Code:        fieldStruct.Name,
+					Code:        i + 1,
 				}
 				version.Errors = append(version.Errors, handlerError)
 				fieldVal.Set(
