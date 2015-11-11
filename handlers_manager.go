@@ -160,7 +160,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		}
 
 		if vMethodType.Type.Out(1).String() != "error" {
-			return ErrorInParameters, fmt.Errorf("Second output parameter should be error (handler %s version number %d)", handlerPath, handlerVersion)
+			return fmt.Errorf("Second output parameter should be error (handler %s version number %d)", handlerPath, handlerVersion)
 		}
 
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
@@ -202,6 +202,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 					UserMessage: errText,
 					Err:         errors.New(errText),
 					Code:        i + 1,
+					Name:        fieldStruct.Name,
 				}
 				version.Errors = append(version.Errors, handlerError)
 				fieldVal.Set(

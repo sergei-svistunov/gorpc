@@ -13,9 +13,10 @@ import (
 )
 
 type handlerInfo struct {
-	Params []gorpc.HandlerParameter `json:"params"`
-	Output string                   `json:"output"`
-	Input  string                   `json:"input"`
+	Params []gorpc.HandlerParameter
+	Output string
+	Input  string
+	Errors []gorpc.HandlerError
 }
 
 type HttpJsonLibGenerator struct {
@@ -80,6 +81,7 @@ func (g *HttpJsonLibGenerator) collectStructs(structsBuf *bytes.Buffer) error {
 				Params: v.Request.Fields,
 				Output: handlerOutputTypeName,
 				Input:  handlerInputTypeName,
+				Errors: v.Errors,
 			}
 		}
 	}
@@ -88,19 +90,43 @@ func (g *HttpJsonLibGenerator) collectStructs(structsBuf *bytes.Buffer) error {
 
 func (g *HttpJsonLibGenerator) generateAdapterMethods() []byte {
 	var result bytes.Buffer
+	var handlerErrorsBuf bytes.Buffer
 
 	for path, handlerInfo := range g.path2HandlerInfoMapping {
 		name := strings.Replace(strings.Title(path), "/", "", -1)
 		name = strings.Replace(name, "_", "", -1)
 
+		handlerErrorsNameMapping := "nil"
+		if len(handlerInfo.Errors) > 0 {
+			handlerErrorsName := name + "Errors"
+			fmt.Fprintf(&handlerErrorsBuf, "var %s = struct {\n", handlerErrorsName)
+			for _, e := range handlerInfo.Errors {
+				fmt.Fprintf(&handlerErrorsBuf, "%s error\n", e.Name)
+			}
+			handlerErrorsBuf.WriteString("}{\n")
+			for i, e := range handlerInfo.Errors {
+				fmt.Fprintf(&handlerErrorsBuf, "%s: &ServiceError{Code:%d, Message:%q},\n", e.Name, i+1, e.UserMessage)
+			}
+			handlerErrorsBuf.WriteString("}\n\n")
+			fmt.Fprintf(&handlerErrorsBuf, "var _%sMapping = map[int]*ServiceError{\n", handlerErrorsName)
+			for i, e := range handlerInfo.Errors {
+				fmt.Fprintf(&handlerErrorsBuf, "%d: %s.%s,\n", i+1, handlerErrorsName, e.Name)
+			}
+			handlerErrorsBuf.WriteString("}\n\n")
+			handlerErrorsNameMapping = "_" + handlerErrorsName + "Mapping"
+		}
+
 		method := regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallPostFuncTemplate, []byte(path))
 		method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(name))
 		method = regexp.MustCompilePOSIX(">>>INPUT_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Input))
 		method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Output))
+		method = regexp.MustCompilePOSIX(">>>HANDLER_ERRORS<<<").ReplaceAll(method, []byte(handlerErrorsNameMapping))
 		method = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(method, []byte(strings.Title(g.serviceName)))
 
 		result.Write(method)
 	}
+
+	handlerErrorsBuf.WriteTo(&result)
 
 	return result.Bytes()
 }

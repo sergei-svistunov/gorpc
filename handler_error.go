@@ -12,6 +12,7 @@ type HandlerError struct {
 	UserMessage string
 	Err         error
 	Code        int
+	Name        string
 }
 
 func (e *HandlerError) Error() string {

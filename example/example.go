@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/sergei-svistunov/gorpc"
-	"github.com/sergei-svistunov/gorpc/example/client"
+	//	"github.com/sergei-svistunov/gorpc/example/client"
 	"github.com/sergei-svistunov/gorpc/swagger_ui"
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
 	"github.com/sergei-svistunov/gorpc/transport/http_json"
@@ -43,6 +43,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	e := client.NewExample(nil, nil, client.Callbacks{})
-	e.TestHandler1V1(context.Background(), client.TestHandler1V1Args{})
+	//	e := client.NewExample(nil, nil, client.Callbacks{})
+	//	_, err = e.TestHandler1V1(context.Background(), client.TestHandler1V1Args{})
+	//	if err == client.TestHandler1V2Errors.ERROR_TYPE1 {
+	//		panic(err)
+	//	}
 }

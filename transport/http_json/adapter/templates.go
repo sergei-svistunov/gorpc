@@ -69,7 +69,7 @@ type httpSessionResponse struct {
 	Error  int      ` + "`" + `json:"error"` + "`" + `
 }
 
-func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}) (err error) {
+func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[int]*ServiceError) (err error) {
 	api.callbacks.OnStart(ctx)
 	defer func() {
 		if r := recover(); r != nil {
@@ -107,7 +107,7 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	req.Header.Set("Content-Type", "application/json")
 	api.callbacks.OnPrepareRequest(ctx, req)
 
-	if err := doRequest(api.client, req, buf); err != nil {
+	if err := doRequest(api.client, req, buf, handlerErrors); err != nil {
 		api.callbacks.OnError(ctx, err)
 		return err
 	}
@@ -128,7 +128,7 @@ func createRawURL(url, path string, values url.Values) string {
 	return buf.String()
 }
 
-func doRequest(client *http.Client, request *http.Request, buf interface{}) error {
+func doRequest(client *http.Client, request *http.Request, buf interface{}, handlerErrors map[int]*ServiceError) error {
 	// Run
 	response, err := client.Do(request)
 	if err != nil {
@@ -169,15 +169,16 @@ func doRequest(client *http.Client, request *http.Request, buf interface{}) erro
 	}
 
 	if mainResp.Result == "ERROR" {
-		return ServiceError{
-			Code: mainResp.Error,
-			Message: string(mainResp.Data), // TODO: extract error message from handler info, handle not found/unknown error
+		err, ok := handlerErrors[mainResp.Error]
+		if ok {
+			return err
 		}
 	}
 
 	return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
 }
 
+// TODO: copies gorpc.HandlerError
 // ServiceError uses to separate critical and non-critical errors which returns in external service response.
 // For this type of error we shouldn't use 500 error counter for librato
 type ServiceError struct {
@@ -186,7 +187,7 @@ type ServiceError struct {
 }
 
 // Error method for implementing common error interface
-func (err ServiceError) Error() string {
+func (err *ServiceError) Error() string {
 	return err.Message
 }
 `)
@@ -194,7 +195,7 @@ func (err ServiceError) Error() string {
 var handlerCallPostFuncTemplate = []byte(`
 func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context, options >>>INPUT_TYPE<<<) (*>>>RETURNED_TYPE<<<, error) {
     var result >>>RETURNED_TYPE<<<
-    err := api.set(ctx, ">>>HANDLER_PATH<<<", options, &result)
+    err := api.set(ctx, ">>>HANDLER_PATH<<<", options, &result, >>>HANDLER_ERRORS<<<)
 	return &result, err
 }
 `)
