@@ -49,16 +49,10 @@ func New>>>API_NAME<<<(balancer IBalancer, apiTimeout time.Duration) *>>>API_NAM
 >>>CLIENT_STRUCTS<<<
 
 type httpSessionResponse struct {
-	Result string      ` + "`" + `json:"result"` + "`" + `
+	Result string      ` + "`" + `json:"result"` + "`" + ` //OK or ERROR
 	Data   json.RawMessage ` + "`" + `json:"data"` + "`" + `
-	Error  string      ` + "`" + `json:"error"` + "`" + `
+	Error  int      ` + "`" + `json:"error"` + "`" + `
 }
-
-//type sessionRequest struct {
-//	URL    string
-//	Path   string
-//	Params interface{}
-//}
 
 func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}) error {
 	apiURL, err := api.balancer.Next()
@@ -131,11 +125,34 @@ func do(client *http.Client, request *http.Request, buf interface{}) (err error)
     if err = json.Unmarshal(result, &mainResp); err != nil {
         return fmt.Errorf("request %q failed to decode response %q: %v", request.URL.RequestURI(), string(result), err)
     }
-    if err = json.Unmarshal(mainResp.Data, buf); err != nil {
-        return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
-    }
 
-	return nil
+	if mainResp.Result == "OK" {
+		if err = json.Unmarshal(mainResp.Data, buf); err != nil {
+			return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
+		}
+		return nil
+	}
+
+	if mainResp.Result == "ERROR" {
+		return ServiceError{
+			Code: mainResp.Error,
+			Message: "TODO", // TODO: extract error message from handler info, handle not found/unknown error
+		}
+	}
+
+	return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
+}
+
+// ServiceError uses to separate critical and non-critical errors which returns in external service response.
+// For this type of error we shouldn't use 500 error counter for librato
+type ServiceError struct {
+	Code    int
+	Message string
+}
+
+// Error method for implementing common error interface
+func (err ServiceError) Error() string {
+	return err.Message
 }
 `)
 

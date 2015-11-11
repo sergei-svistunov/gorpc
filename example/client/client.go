@@ -98,16 +98,10 @@ type TestHandler1V3Optional struct {
 }
 
 type httpSessionResponse struct {
-	Result string          `json:"result"`
+	Result string          `json:"result"` //OK or ERROR
 	Data   json.RawMessage `json:"data"`
-	Error  string          `json:"error"`
+	Error  int             `json:"error"`
 }
-
-//type sessionRequest struct {
-//	URL    string
-//	Path   string
-//	Params interface{}
-//}
 
 func (api *Example) set(ctx context.Context, path string, data interface{}, buf interface{}) error {
 	apiURL, err := api.balancer.Next()
@@ -180,9 +174,37 @@ func do(client *http.Client, request *http.Request, buf interface{}) (err error)
 	if err = json.Unmarshal(result, &mainResp); err != nil {
 		return fmt.Errorf("request %q failed to decode response %q: %v", request.URL.RequestURI(), string(result), err)
 	}
-	if err = json.Unmarshal(mainResp.Data, buf); err != nil {
-		return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
+
+	if mainResp.Result == "OK" {
+		if err = json.Unmarshal(mainResp.Data, buf); err != nil {
+			return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
+		}
+		return nil
 	}
 
-	return nil
+	// unknown error
+//	if mainResp.Error == 0 {
+//		return fmt.Errorf("service for request %q returned unknown error code: %v", request.URL.RequestURI(), err)
+//	}
+
+	if mainResp.Result != "ERROR" {
+		return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
+	}
+
+	return ServiceError{
+		Code: mainResp.Error,
+		Message: "TODO", // TODO: extract error message from handler info
+	}
+}
+
+// ServiceError uses to separate critical and non-critical errors which returns in external service response.
+// For this type of error we shouldn't use 500 error counter for librato
+type ServiceError struct {
+	Code    int
+	Message string
+}
+
+// Error method for implementing common error interface
+func (err ServiceError) Error() string {
+	return err.Message
 }
