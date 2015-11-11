@@ -8,13 +8,13 @@ import (
 	"github.com/sergei-svistunov/gorpc/swagger_ui"
 	"github.com/sergei-svistunov/gorpc/transport/http_json"
 	http_json_adapter "github.com/sergei-svistunov/gorpc/transport/http_json/adapter"
-
+	"github.com/sergei-svistunov/gorpc/example/client"
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
 
 	"golang.org/x/net/context"
 )
 
-//go:generate curl "http://localhost:8080/client.go?service_name=example&package=main" --output client.go --progress-bar
+//go:generate curl "http://localhost:8080/client.go?service_name=example&package=client" --output client/client.go --create-dirs --silent --show-error
 
 func main() {
 	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{})
@@ -42,4 +42,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	e := client.NewExample(nil, 0)
+	e.TestHandler1V1(context.Background(), client.TestHandler1V1Args{})
 }
