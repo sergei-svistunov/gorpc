@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sergei-svistunov/gorpc"
 	"fmt"
+	"github.com/sergei-svistunov/gorpc"
 )
 
 type handlerInfo struct {

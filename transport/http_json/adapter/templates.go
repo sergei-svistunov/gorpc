@@ -7,8 +7,8 @@ var mainImports = []string{
 	"io/ioutil",
 	"net/http",
 	"net/url",
+	"runtime",
 	"strings",
-	"time",
 	"golang.org/x/net/context",
 }
 
@@ -24,23 +24,37 @@ type IBalancer interface {
     Next() (string, error)
 }
 
+type Callbacks struct {
+	OnStart func(ctx context.Context)
+	OnFinish func(ctx context.Context)
+	OnError func(ctx context.Context, err error)
+	OnPanic func(ctx context.Context, r interface{}, trace []byte)
+	OnPrepareRequest func(ctx context.Context, req *http.Request)
+}
+
 type >>>API_NAME<<< struct {
 	client      *http.Client
 	serviceName string
 	balancer    IBalancer
+	callbacks   Callbacks
 }
 
-func New>>>API_NAME<<<(balancer IBalancer, apiTimeout time.Duration) *>>>API_NAME<<< {
+func New>>>API_NAME<<<(client *http.Client, balancer IBalancer, callbacks Callbacks) *>>>API_NAME<<< {
+	if client == nil {
+		client = http.DefaultClient
+	}
 	return &>>>API_NAME<<<{
-		client: &http.Client{
-			Transport: &http.Transport{
-				//DisableCompression: true,
-				MaxIdleConnsPerHost: 20,
-			},
-			Timeout: apiTimeout,
-		},
+//		client: &http.Client{
+//			Transport: &http.Transport{
+//				//DisableCompression: true,
+//				MaxIdleConnsPerHost: 20,
+//			},
+//			Timeout: apiTimeout,
+//		},
 		serviceName: ">>>API_NAME<<<",
-		balancer: balancer,
+		balancer:    balancer,
+		callbacks:   callbacks,
+		client:      client,
 	}
 }
 
@@ -54,25 +68,51 @@ type httpSessionResponse struct {
 	Error  int      ` + "`" + `json:"error"` + "`" + `
 }
 
-func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}) error {
-	apiURL, err := api.balancer.Next()
+func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}) (err error) {
+	api.callbacks.OnStart(ctx)
+	defer func() {
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			buf := make([]byte, size)
+			n := runtime.Stack(buf, false)
+			trace := buf[:n]
+
+			err = fmt.Errorf("panic while calling %q service: %v", api.serviceName, r)
+			api.callbacks.OnPanic(ctx, r, trace)
+		}
+	}()
+
+	var apiURL string
+	apiURL, err = api.balancer.Next()
 	if err != nil {
+		api.callbacks.OnError(ctx, err)
 		return err
 	}
 
 	b := bytes.NewBuffer(nil)
 	encoder := json.NewEncoder(b)
 	if err := encoder.Encode(data); err != nil {
-		return fmt.Errorf("could not marshal data %+v: %v", data, err)
-	}
-
-	r, err := http.NewRequest("POST", createRawURL(apiURL, path, nil), b)
-	if err != nil {
+		err = fmt.Errorf("could not marshal data %+v: %v", data, err)
+		api.callbacks.OnError(ctx, err)
 		return err
 	}
 
-	r.Header.Set("Content-Type", "application/json")
-	return do(api.client, r, buf)
+	var req *http.Request
+	req, err = http.NewRequest("POST", createRawURL(apiURL, path, nil), b)
+	if err != nil {
+		api.callbacks.OnError(ctx, err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	api.callbacks.OnPrepareRequest(ctx, req)
+
+	if err := doRequest(api.client, req, buf); err != nil {
+		api.callbacks.OnError(ctx, err)
+		return err
+	}
+
+	api.callbacks.OnFinish(ctx)
+	return nil
 }
 
 func createRawURL(url, path string, values url.Values) string {
@@ -87,47 +127,41 @@ func createRawURL(url, path string, values url.Values) string {
 	return buf.String()
 }
 
-func do(client *http.Client, request *http.Request, buf interface{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic in request %q: %v", request.URL.RequestURI(), r)
-		}
-	}()
-
+func doRequest(client *http.Client, request *http.Request, buf interface{}) error {
 	// Run
-	var response *http.Response
-	if response, err = client.Do(request); err != nil {
+	response, err := client.Do(request)
+	if err != nil {
 		return err
 	}
 	defer response.Body.Close()
 
 	// Handle error
 	if response.StatusCode != http.StatusOK {
-	    switch response.StatusCode {
-	    // TODO separate error types for different status codes (and different callbacks)
-	    /*
-        case http.StatusForbidden:
-        case http.StatusBadGateway:
-        case http.StatusBadRequest:
-        */
-        default:
-            return fmt.Errorf("Request %q failed. Server returns status code %d", request.URL.RequestURI(), response.StatusCode)
-        }
+		switch response.StatusCode {
+		// TODO separate error types for different status codes (and different callbacks)
+		/*
+		   case http.StatusForbidden:
+		   case http.StatusBadGateway:
+		   case http.StatusBadRequest:
+		*/
+		default:
+			return fmt.Errorf("Request %q failed. Server returns status code %d", request.URL.RequestURI(), response.StatusCode)
+		}
 	}
 
 	// Read response
-	var result []byte
-	if result, err = ioutil.ReadAll(response.Body); err != nil {
+	result, err := ioutil.ReadAll(response.Body)
+	if err != nil {
 		return err
 	}
 
-    var mainResp httpSessionResponse
-    if err = json.Unmarshal(result, &mainResp); err != nil {
-        return fmt.Errorf("request %q failed to decode response %q: %v", request.URL.RequestURI(), string(result), err)
-    }
+	var mainResp httpSessionResponse
+	if err := json.Unmarshal(result, &mainResp); err != nil {
+		return fmt.Errorf("request %q failed to decode response %q: %v", request.URL.RequestURI(), string(result), err)
+	}
 
 	if mainResp.Result == "OK" {
-		if err = json.Unmarshal(mainResp.Data, buf); err != nil {
+		if err := json.Unmarshal(mainResp.Data, buf); err != nil {
 			return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
 		}
 		return nil

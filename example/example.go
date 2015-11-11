@@ -5,11 +5,11 @@ import (
 	"net/http"
 
 	"github.com/sergei-svistunov/gorpc"
+	"github.com/sergei-svistunov/gorpc/example/client"
 	"github.com/sergei-svistunov/gorpc/swagger_ui"
+	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
 	"github.com/sergei-svistunov/gorpc/transport/http_json"
 	http_json_adapter "github.com/sergei-svistunov/gorpc/transport/http_json/adapter"
-	"github.com/sergei-svistunov/gorpc/example/client"
-	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
 
 	"golang.org/x/net/context"
 )
@@ -43,6 +43,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	e := client.NewExample(nil, 0)
+	e := client.NewExample(nil, nil, client.Callbacks{})
 	e.TestHandler1V1(context.Background(), client.TestHandler1V1Args{})
 }

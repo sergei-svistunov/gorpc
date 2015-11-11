@@ -9,31 +9,45 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
-	"time"
 )
 
 type IBalancer interface {
 	Next() (string, error)
 }
 
+type Callbacks struct {
+	OnStart          func(ctx context.Context)
+	OnFinish         func(ctx context.Context)
+	OnError          func(ctx context.Context, err error)
+	OnPanic          func(ctx context.Context, r interface{}, trace []byte)
+	OnPrepareRequest func(ctx context.Context, req *http.Request)
+}
+
 type Example struct {
 	client      *http.Client
 	serviceName string
 	balancer    IBalancer
+	callbacks   Callbacks
 }
 
-func NewExample(balancer IBalancer, apiTimeout time.Duration) *Example {
+func NewExample(client *http.Client, balancer IBalancer, callbacks Callbacks) *Example {
+	if client == nil {
+		client = http.DefaultClient
+	}
 	return &Example{
-		client: &http.Client{
-			Transport: &http.Transport{
-				//DisableCompression: true,
-				MaxIdleConnsPerHost: 20,
-			},
-			Timeout: apiTimeout,
-		},
+		//		client: &http.Client{
+		//			Transport: &http.Transport{
+		//				//DisableCompression: true,
+		//				MaxIdleConnsPerHost: 20,
+		//			},
+		//			Timeout: apiTimeout,
+		//		},
 		serviceName: "Example",
 		balancer:    balancer,
+		callbacks:   callbacks,
+		client:      client,
 	}
 }
 
@@ -103,25 +117,51 @@ type httpSessionResponse struct {
 	Error  int             `json:"error"`
 }
 
-func (api *Example) set(ctx context.Context, path string, data interface{}, buf interface{}) error {
-	apiURL, err := api.balancer.Next()
+func (api *Example) set(ctx context.Context, path string, data interface{}, buf interface{}) (err error) {
+	api.callbacks.OnStart(ctx)
+	defer func() {
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			buf := make([]byte, size)
+			n := runtime.Stack(buf, false)
+			trace := buf[:n]
+
+			err = fmt.Errorf("panic while calling %q service: %v", api.serviceName, r)
+			api.callbacks.OnPanic(ctx, r, trace)
+		}
+	}()
+
+	var apiURL string
+	apiURL, err = api.balancer.Next()
 	if err != nil {
+		api.callbacks.OnError(ctx, err)
 		return err
 	}
 
 	b := bytes.NewBuffer(nil)
 	encoder := json.NewEncoder(b)
 	if err := encoder.Encode(data); err != nil {
-		return fmt.Errorf("could not marshal data %+v: %v", data, err)
-	}
-
-	r, err := http.NewRequest("POST", createRawURL(apiURL, path, nil), b)
-	if err != nil {
+		err = fmt.Errorf("could not marshal data %+v: %v", data, err)
+		api.callbacks.OnError(ctx, err)
 		return err
 	}
 
-	r.Header.Set("Content-Type", "application/json")
-	return do(api.client, r, buf)
+	var req *http.Request
+	req, err = http.NewRequest("POST", createRawURL(apiURL, path, nil), b)
+	if err != nil {
+		api.callbacks.OnError(ctx, err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	api.callbacks.OnPrepareRequest(ctx, req)
+
+	if err := doRequest(api.client, req, buf); err != nil {
+		api.callbacks.OnError(ctx, err)
+		return err
+	}
+
+	api.callbacks.OnFinish(ctx)
+	return nil
 }
 
 func createRawURL(url, path string, values url.Values) string {
@@ -136,16 +176,10 @@ func createRawURL(url, path string, values url.Values) string {
 	return buf.String()
 }
 
-func do(client *http.Client, request *http.Request, buf interface{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic in request %q: %v", request.URL.RequestURI(), r)
-		}
-	}()
-
+func doRequest(client *http.Client, request *http.Request, buf interface{}) error {
 	// Run
-	var response *http.Response
-	if response, err = client.Do(request); err != nil {
+	response, err := client.Do(request)
+	if err != nil {
 		return err
 	}
 	defer response.Body.Close()
@@ -165,36 +199,31 @@ func do(client *http.Client, request *http.Request, buf interface{}) (err error)
 	}
 
 	// Read response
-	var result []byte
-	if result, err = ioutil.ReadAll(response.Body); err != nil {
+	result, err := ioutil.ReadAll(response.Body)
+	if err != nil {
 		return err
 	}
 
 	var mainResp httpSessionResponse
-	if err = json.Unmarshal(result, &mainResp); err != nil {
+	if err := json.Unmarshal(result, &mainResp); err != nil {
 		return fmt.Errorf("request %q failed to decode response %q: %v", request.URL.RequestURI(), string(result), err)
 	}
 
 	if mainResp.Result == "OK" {
-		if err = json.Unmarshal(mainResp.Data, buf); err != nil {
+		if err := json.Unmarshal(mainResp.Data, buf); err != nil {
 			return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
 		}
 		return nil
 	}
 
-	// unknown error
-//	if mainResp.Error == 0 {
-//		return fmt.Errorf("service for request %q returned unknown error code: %v", request.URL.RequestURI(), err)
-//	}
-
-	if mainResp.Result != "ERROR" {
-		return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
+	if mainResp.Result == "ERROR" {
+		return ServiceError{
+			Code:    mainResp.Error,
+			Message: "TODO", // TODO: extract error message from handler info, handle not found/unknown error
+		}
 	}
 
-	return ServiceError{
-		Code: mainResp.Error,
-		Message: "TODO", // TODO: extract error message from handler info
-	}
+	return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
 }
 
 // ServiceError uses to separate critical and non-critical errors which returns in external service response.
