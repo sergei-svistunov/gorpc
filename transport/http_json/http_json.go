@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"runtime"
 	"strings"
@@ -146,7 +145,8 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			var err error
 			cacheKey, err = json.Marshal(params.Interface())
 			if err != nil {
-				log.Print(err.Error())
+				// TODO: call callback.onError?
+				// log.Print(err.Error())
 				cacheKey = nil
 			}
 		}

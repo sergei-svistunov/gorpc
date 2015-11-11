@@ -5,7 +5,6 @@ import (
 )
 
 type handlerVersion struct {
-	Parameters    []HandlerParameter
 	Errors        []HandlerError
 	Request       *handlerRequest
 	Response      reflect.Type
@@ -21,14 +20,6 @@ type handlerRequest struct {
 	Type   reflect.Type
 	Flat   bool
 	Fields []HandlerParameter
-}
-
-func (v *handlerVersion) GetMethod() reflect.Method {
-	return v.method
-}
-
-func (v *handlerVersion) GetVersion() string {
-	return v.Version
 }
 
 type HandlerParameter struct {

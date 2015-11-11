@@ -2,12 +2,13 @@ package adapter
 
 import (
 	"bytes"
-	"github.com/sergei-svistunov/gorpc"
 	"go/format"
 	"log"
 	"reflect"
 	"regexp"
 	"strings"
+
+	"github.com/sergei-svistunov/gorpc"
 )
 
 type handlerInfo struct {
@@ -21,7 +22,8 @@ type HttpJsonLibGenerator struct {
 	pkgName                 string
 	serviceName             string
 	path2HandlerInfoMapping map[string]handlerInfo
-	collectedStructs        StringsStack
+	collectedStructs        map[string]struct{}
+	extraImports            map[string]struct{}
 }
 
 func NewHttpJsonLibGenerator(hm *gorpc.HandlersManager, packageName, serviceName string) *HttpJsonLibGenerator {
@@ -30,6 +32,8 @@ func NewHttpJsonLibGenerator(hm *gorpc.HandlersManager, packageName, serviceName
 		pkgName:                 "adapter",
 		serviceName:             "ExternalAPI",
 		path2HandlerInfoMapping: map[string]handlerInfo{},
+		collectedStructs:        map[string]struct{}{},
+		extraImports:            map[string]struct{}{},
 	}
 	if packageName != "" {
 		generator.pkgName = packageName
@@ -43,9 +47,8 @@ func NewHttpJsonLibGenerator(hm *gorpc.HandlersManager, packageName, serviceName
 
 func (g *HttpJsonLibGenerator) Generate() ([]byte, error) {
 	structsBuf := &bytes.Buffer{}
-	extraImports := []string{}
 
-	if err := g.collectStructs(structsBuf, &extraImports); err != nil {
+	if err := g.collectStructs(structsBuf); err != nil {
 		return nil, err
 	}
 
@@ -53,32 +56,31 @@ func (g *HttpJsonLibGenerator) Generate() ([]byte, error) {
 	result = regexp.MustCompilePOSIX(">>>STATIC_LOGIC<<<").ReplaceAll(result, g.getStaticCodeTemplate())
 	result = regexp.MustCompilePOSIX(">>>DYNAMIC_LOGIC<<<").ReplaceAll(result, g.generateAdapterMethods(structsBuf))
 	result = regexp.MustCompilePOSIX(">>>STRUCTS<<<").ReplaceAll(result, structsBuf.Bytes())
-	result = regexp.MustCompilePOSIX(">>>IMPORTS<<<").ReplaceAll(result, []byte(g.collectImports(extraImports)))
+	result = regexp.MustCompilePOSIX(">>>IMPORTS<<<").ReplaceAll(result, []byte(g.collectImports()))
 
 	return format.Source(result)
-
 }
 
 func (g *HttpJsonLibGenerator) getStaticCodeTemplate() []byte {
 	return regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(staticLogicTemplate, []byte(strings.Title(g.serviceName)))
 }
 
-func (g *HttpJsonLibGenerator) collectStructs(structsBuf *bytes.Buffer, extraImports *[]string) error {
+func (g *HttpJsonLibGenerator) collectStructs(structsBuf *bytes.Buffer) error {
 	for _, path := range g.hm.GetHandlersPaths() {
 		info := g.hm.GetHandlerInfo(path)
 		for _, v := range info.Versions {
-			handlerOutputTypeName, err := g.convertStructToCode(v.GetMethod().Type.Out(0), structsBuf, extraImports)
+			handlerOutputTypeName, err := g.convertStructToCode(v.Response, structsBuf)
 			if err != nil {
 				return err
 			}
-			handlerIntputTypeName, err := g.convertStructToCode(v.GetMethod().Type.In(2), structsBuf, extraImports)
+			handlerInputTypeName, err := g.convertStructToCode(v.Request.Type, structsBuf)
 			if err != nil {
 				return err
 			}
-			g.path2HandlerInfoMapping[path+"/"+v.GetVersion()] = handlerInfo{
+			g.path2HandlerInfoMapping[path+"/"+v.Version] = handlerInfo{
 				Params: v.Request.Fields,
 				Output: handlerOutputTypeName,
-				Input:  handlerIntputTypeName,
+				Input:  handlerInputTypeName,
 			}
 		}
 	}
@@ -86,11 +88,10 @@ func (g *HttpJsonLibGenerator) collectStructs(structsBuf *bytes.Buffer, extraImp
 }
 
 func (g *HttpJsonLibGenerator) generateAdapterMethods(structsBuf *bytes.Buffer) []byte {
-	result := &bytes.Buffer{}
+	var result bytes.Buffer
 
 	for path, handlerInfo := range g.path2HandlerInfoMapping {
-		var method []byte
-		method = regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallPostFuncTemplate, []byte(path))
+		method := regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallPostFuncTemplate, []byte(path))
 		path = strings.Replace(strings.Title(path), "/", "", -1)
 		path = strings.Replace(path, "_", "", -1)
 		method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(path))
@@ -106,15 +107,12 @@ func (g *HttpJsonLibGenerator) generateAdapterMethods(structsBuf *bytes.Buffer) 
 
 func (g *HttpJsonLibGenerator) needToMigratePkgStructs(pkgPath string) bool {
 	// TODO this check was removed and all types with non-empty package path will be migrated in library code
-	if pkgPath != "" {
-		return true
-	}
-	return false
+	return pkgPath != ""
 }
 
-func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *bytes.Buffer, extraImports *[]string) (typeName string, err error) {
+func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *bytes.Buffer) (typeName string, err error) {
 	// ignore slice of new types because this type exactly new and we're collecting its content right now below
-	typeName, _ = g.detectTypeName(t, extraImports)
+	typeName, _ = g.detectTypeName(t)
 	if strings.Contains(typeName, ".") {
 		// do not migrate external structs (type name with path)
 		return
@@ -124,7 +122,7 @@ func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *byte
 
 	defer func() {
 		for _, newType := range newInternalTypes {
-			if _, err = g.convertStructToCode(newType, codeBuf, extraImports); err != nil {
+			if _, err = g.convertStructToCode(newType, codeBuf); err != nil {
 				return
 			}
 		}
@@ -134,10 +132,9 @@ func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *byte
 	case reflect.Struct:
 		str := "type " + typeName + " struct {\n"
 		for i := 0; i < t.NumField(); i++ {
-
 			field := t.Field(i)
 
-			fieldName, emb := g.detectTypeName(field.Type, extraImports)
+			fieldName, emb := g.detectTypeName(field.Type)
 			if emb != nil {
 				newInternalTypes = append(newInternalTypes, emb...)
 			}
@@ -163,10 +160,10 @@ func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *byte
 
 		return
 	case reflect.Ptr:
-		return g.convertStructToCode(t.Elem(), codeBuf, extraImports)
+		return g.convertStructToCode(t.Elem(), codeBuf)
 	case reflect.Slice:
 		var elemType string
-		elemType, err = g.convertStructToCode(t.Elem(), codeBuf, extraImports)
+		elemType, err = g.convertStructToCode(t.Elem(), codeBuf)
 		if err != nil {
 			return
 		}
@@ -177,8 +174,8 @@ func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *byte
 
 		return
 	case reflect.Map:
-		keyType, _ := g.convertStructToCode(t.Key(), codeBuf, extraImports)
-		valType, _ := g.convertStructToCode(t.Elem(), codeBuf, extraImports)
+		keyType, _ := g.convertStructToCode(t.Key(), codeBuf)
+		valType, _ := g.convertStructToCode(t.Elem(), codeBuf)
 
 		if mapName := "map[" + keyType + "]" + valType; typeName != mapName {
 			writeType(codeBuf, typeName, mapName)
@@ -199,24 +196,35 @@ func writeType(codeBuf *bytes.Buffer, name, kind string) {
 	codeBuf.WriteString("type " + name + " " + kind + "\n\n")
 }
 
-func (g *HttpJsonLibGenerator) detectTypeName(t reflect.Type, extraImports *[]string) (name string, newTypes []reflect.Type) {
+func (g *HttpJsonLibGenerator) migratedStructName(t reflect.Type) string {
+	path := t.PkgPath()
+	if strings.HasPrefix(path, g.hm.Pkg()) {
+		path = strings.TrimPrefix(path, g.hm.Pkg())
+	}
+	if strings.HasPrefix(path, "/") {
+		path = strings.TrimPrefix(path, "/")
+	}
+	path = strings.Replace(path, "/", " ", -1)
+	path = strings.Replace(path, ".", "", -1)
+	name := strings.Title(path + " " + t.Name())
+	name = strings.Replace(name, " ", "", -1)
+	return name
+}
+
+func (g *HttpJsonLibGenerator) detectTypeName(t reflect.Type) (name string, newTypes []reflect.Type) {
 	name = t.Name()
 	if name != "" {
 		// for custom types make unique names using package path
 		// because different packages can contains structs with same names
 		if g.needToMigratePkgStructs(t.PkgPath()) {
-			path := strings.Replace(t.PkgPath(), "/", "_", -1)
-			path = strings.Replace(path, ".", "", -1)
-			path = strings.Title(path)
+			name = g.migratedStructName(t)
 
-			name = path + "_" + strings.Title(name)
-
-			if !g.collectedStructs.AlreadyExist(name) {
+			if _, exists := g.collectedStructs[name]; !exists {
 				newTypes = []reflect.Type{t}
-				g.collectedStructs.Add(name)
+				g.collectedStructs[name] = struct{}{}
 			}
 		} else if t.PkgPath() != "" {
-			*extraImports = append(*extraImports, t.PkgPath())
+			g.extraImports[t.PkgPath()] = struct{}{}
 			name = t.String()
 		}
 
@@ -229,55 +237,62 @@ func (g *HttpJsonLibGenerator) detectTypeName(t reflect.Type, extraImports *[]st
 	name = "interface{}"
 	switch t.Kind() {
 	case reflect.Slice:
-		name, embeded := g.detectTypeName(t.Elem(), extraImports)
-		if embeded != nil {
-			newTypes = append(newTypes, embeded...)
+		name, embedded := g.detectTypeName(t.Elem())
+		if embedded != nil {
+			newTypes = append(newTypes, embedded...)
 		}
 		return "[]" + name, newTypes
 	case reflect.Map:
 		// TODO enhance for custom key type in map
 		key := t.Key().Name()
-		val, embeded := g.detectTypeName(t.Elem(), extraImports)
-		if embeded != nil {
-			newTypes = append(newTypes, embeded...)
+		val, embedded := g.detectTypeName(t.Elem())
+		if embedded != nil {
+			newTypes = append(newTypes, embedded...)
 		}
 		if g.needToMigratePkgStructs(t.Elem().PkgPath()) {
-			if !g.collectedStructs.AlreadyExist(name) {
+			if _, exists := g.collectedStructs[name]; !exists {
 				newTypes = []reflect.Type{t}
-				g.collectedStructs.Add(name)
+				g.collectedStructs[name] = struct{}{}
 			}
 		}
 		if key != "" && val != "" {
 			return "map[" + key + "]" + val, newTypes
 		}
 	case reflect.Ptr:
-		name, embeded := g.detectTypeName(t.Elem(), extraImports)
-		if embeded != nil {
-			newTypes = append(newTypes, embeded...)
+		name, embedded := g.detectTypeName(t.Elem())
+		if embedded != nil {
+			newTypes = append(newTypes, embedded...)
 		}
 		return name, newTypes
 	case reflect.Interface:
 		return
+	default:
+		log.Println("Unknown type has been replaced with interface{}")
+		return
 	}
 
-	log.Println("Unknown type has been replaced with interface{}")
 	return
 }
 
-func (g *HttpJsonLibGenerator) collectImports(extraImports []string) string {
-	imports := mainImports
-	if len(extraImports) > 0 {
-		imports = append(imports, extraImports...)
+func (g *HttpJsonLibGenerator) collectImports() string {
+	var buf bytes.Buffer
+	for _, _import := range mainImports {
+		appendImport(&buf, _import)
 	}
-
-	var result string
-	for i := range imports {
-		if strings.HasSuffix(imports[i], "\"") {
-			result += (imports[i] + "\n")
-		} else {
-			result += ("\"" + imports[i] + "\"\n")
-		}
+	for _import, _ := range g.extraImports {
+		appendImport(&buf, _import)
 	}
+	return buf.String()
+}
 
-	return result
+func appendImport(buf *bytes.Buffer, _import string) {
+	if strings.HasSuffix(_import, `"`) {
+		buf.WriteString(_import)
+		buf.WriteRune('\n')
+	} else {
+		buf.WriteRune('"')
+		buf.WriteString(_import)
+		buf.WriteRune('"')
+		buf.WriteRune('\n')
+	}
 }

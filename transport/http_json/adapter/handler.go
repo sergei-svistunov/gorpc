@@ -6,14 +6,11 @@ import (
 )
 
 type AdapterHandler struct {
-	hm   *gorpc.HandlersManager
-	code []byte
+	hm *gorpc.HandlersManager
 }
 
-func NewJSONClientLibGeneratorHandler(hm *gorpc.HandlersManager) *AdapterHandler {
-	return &AdapterHandler{
-		hm: hm,
-	}
+func NewHandler(hm *gorpc.HandlersManager) *AdapterHandler {
+	return &AdapterHandler{hm}
 }
 
 func (h *AdapterHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -23,7 +20,8 @@ func (h *AdapterHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	)
 
 	if err := req.ParseForm(); err != nil {
-		w.Write([]byte(err.Error()))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	if pkg := req.Form.Get("package"); pkg != "" {
 		pkgName = pkg
@@ -34,11 +32,11 @@ func (h *AdapterHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	generator := NewHttpJsonLibGenerator(h.hm, pkgName, serviceName)
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	code, err := generator.Generate()
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write(code)
 }

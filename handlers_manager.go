@@ -23,7 +23,7 @@ type HandlersManagerCallbacks struct {
 	// OnHandlerRegistration will be called only one time for each handler version while handler registration is in progress
 	OnHandlerRegistration func(path string, method reflect.Method) (extraData interface{})
 
-	// OnError will be called if any error occures while CallHandler() method is in processing
+	// OnError will be called if any error occurs while CallHandler() method is in processing
 	OnError func(ctx context.Context, err error)
 
 	// OnSuccess will be called if CallHandler() method is successfully finished
@@ -46,6 +46,31 @@ func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks)
 		handlerVersions: make(map[string]*handlerVersion),
 		handlersPath:    strings.TrimSuffix(handlersPath, "/"),
 		callbacks:       callbacks,
+	}
+}
+
+func (hm *HandlersManager) Pkg() string {
+	return hm.handlersPath
+}
+
+func (hm *HandlersManager) MustRegisterHandlers(handlers ...IHandler) {
+	if err := hm.RegisterHandlers(handlers...); err != nil {
+		panic(err)
+	}
+}
+
+func (hm *HandlersManager) RegisterHandlers(handlers ...IHandler) error {
+	for _, h := range handlers {
+		if err := hm.RegisterHandler(h); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (hm *HandlersManager) MustRegisterHandler(h IHandler) {
+	if err := hm.RegisterHandler(h); err != nil {
+		panic(err)
 	}
 }
 
@@ -116,7 +141,6 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 
 		version := &versions[i]
 		version.Version = "v" + strconv.Itoa(v)
-		version.Parameters = make([]HandlerParameter, paramsType.Elem().NumField())
 		version.path = handlerPath
 		version.method = vMethodType
 		version.handlerStruct = h
