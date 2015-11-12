@@ -52,21 +52,21 @@ func NewExample(client *http.Client, balancer IBalancer, callbacks Callbacks) *E
 }
 
 func (api *Example) TestHandler1V1(ctx context.Context, options TestHandler1V1Args) (*TestHandler1V1Res, error) {
-	var result TestHandler1V1Res
+	var result *TestHandler1V1Res
 	err := api.set(ctx, "/test/handler1/v1/", options, &result, nil)
-	return &result, err
+	return result, err
 }
 
 func (api *Example) TestHandler1V2(ctx context.Context, options TestHandler1V2Args) (*TestHandler1V2Res, error) {
-	var result TestHandler1V2Res
+	var result *TestHandler1V2Res
 	err := api.set(ctx, "/test/handler1/v2/", options, &result, _TestHandler1V2ErrorsMapping)
-	return &result, err
+	return result, err
 }
 
 func (api *Example) TestHandler1V3(ctx context.Context, options TestHandler1V3Request) (*TestHandler1V3Response, error) {
-	var result TestHandler1V3Response
+	var result *TestHandler1V3Response
 	err := api.set(ctx, "/test/handler1/v3/", options, &result, nil)
-	return &result, err
+	return result, err
 }
 
 type TestHandler1V1Args struct {
@@ -133,7 +133,10 @@ type httpSessionResponse struct {
 }
 
 func (api *Example) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[string]int) (err error) {
-	api.callbacks.OnStart(ctx)
+	if api.callbacks.OnStart != nil {
+		api.callbacks.OnStart(ctx)
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			const size = 64 << 10
@@ -142,14 +145,18 @@ func (api *Example) set(ctx context.Context, path string, data interface{}, buf 
 			trace := buf[:n]
 
 			err = fmt.Errorf("panic while calling %q service: %v", api.serviceName, r)
-			api.callbacks.OnPanic(ctx, r, trace)
+			if api.callbacks.OnPanic != nil {
+				api.callbacks.OnPanic(ctx, r, trace)
+			}
 		}
 	}()
 
 	var apiURL string
 	apiURL, err = api.balancer.Next()
 	if err != nil {
-		api.callbacks.OnError(ctx, err)
+		if api.callbacks.OnError != nil {
+			api.callbacks.OnError(ctx, err)
+		}
 		return err
 	}
 
@@ -157,33 +164,43 @@ func (api *Example) set(ctx context.Context, path string, data interface{}, buf 
 	encoder := json.NewEncoder(b)
 	if err := encoder.Encode(data); err != nil {
 		err = fmt.Errorf("could not marshal data %+v: %v", data, err)
-		api.callbacks.OnError(ctx, err)
+		if api.callbacks.OnError != nil {
+			api.callbacks.OnError(ctx, err)
+		}
 		return err
 	}
 
 	var req *http.Request
 	req, err = http.NewRequest("POST", createRawURL(apiURL, path, nil), b)
 	if err != nil {
-		api.callbacks.OnError(ctx, err)
+		if api.callbacks.OnError != nil {
+			api.callbacks.OnError(ctx, err)
+		}
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	api.callbacks.OnPrepareRequest(ctx, req)
+	if api.callbacks.OnPrepareRequest != nil {
+		api.callbacks.OnPrepareRequest(ctx, req)
+	}
 
 	if err := doRequest(api.client, req, buf, handlerErrors); err != nil {
-		api.callbacks.OnError(ctx, err)
+		if api.callbacks.OnError != nil {
+			api.callbacks.OnError(ctx, err)
+		}
 		return err
 	}
 
-	api.callbacks.OnFinish(ctx)
+	if api.callbacks.OnFinish != nil {
+		api.callbacks.OnFinish(ctx)
+	}
 	return nil
 }
 
 func createRawURL(url, path string, values url.Values) string {
 	var buf bytes.Buffer
 	buf.WriteString(strings.TrimRight(url, "/"))
-	//	buf.WriteRune('/')
-	//	buf.WriteString(strings.TrimLeft(path, "/"))
+	//buf.WriteRune('/')
+	//buf.WriteString(strings.TrimLeft(path, "/"))
 	// path must contain leading /
 	buf.WriteString(path)
 	if len(values) > 0 {
