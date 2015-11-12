@@ -234,7 +234,7 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 			} else {
 				method = "post"
 			}
-			swagger.Paths[path+"/"+v.Version+"/"] = PathItem{
+			swagger.Paths[v.Route] = PathItem{
 				method: operation,
 			}
 		}

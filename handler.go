@@ -5,6 +5,7 @@ import (
 )
 
 type handlerVersion struct {
+	Route         string
 	Errors        []HandlerError
 	Request       *handlerRequest
 	Response      reflect.Type
@@ -19,10 +20,10 @@ type handlerVersion struct {
 type handlerRequest struct {
 	Type   reflect.Type
 	Flat   bool
-	Fields []handlerParameter
+	Fields []HandlerParameter
 }
 
-type handlerParameter struct {
+type HandlerParameter struct {
 	Name        string
 	Description string
 	Key         string
@@ -31,10 +32,10 @@ type handlerParameter struct {
 	IsRequired  bool
 	getMethod   reflect.Method
 	structField reflect.StructField
-	Fields      []handlerParameter
+	Fields      []HandlerParameter
 }
 
-func (p *handlerParameter) GetKey() string {
+func (p *HandlerParameter) GetKey() string {
 	if p.Key != "" {
 		return p.Key
 	}

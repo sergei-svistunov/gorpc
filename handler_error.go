@@ -14,7 +14,7 @@ type HandlerError struct {
 	Code        string
 }
 
-func (e HandlerError) Error() string {
+func (e *HandlerError) Error() string {
 	return e.Err.Error()
 }
 
@@ -41,6 +41,5 @@ func (e *CallHandlerError) ErrorCode() string {
 	if userErr, ok := e.Err.(*HandlerError); ok {
 		return userErr.Code
 	}
-
 	return ""
 }

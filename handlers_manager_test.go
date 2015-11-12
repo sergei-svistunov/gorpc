@@ -53,8 +53,8 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 
 	s.Equal("v1", hv1.Version)
 	s.True(hv1.UseCache)
-	s.Equal([]handlerParameter{
-		handlerParameter{
+	s.Equal([]HandlerParameter{
+		HandlerParameter{
 			Name:        "ReqInt",
 			Description: "Required integer argument",
 			Key:         "req_int",
@@ -63,7 +63,7 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 			getMethod:   hv1.Request.Fields[0].getMethod,
 			structField: hv1.Request.Fields[0].structField,
 		},
-		handlerParameter{
+		HandlerParameter{
 			Name:        "Int",
 			Description: "Unrequired integer argument",
 			Key:         "int",

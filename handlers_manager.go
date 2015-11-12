@@ -23,7 +23,7 @@ type HandlersManagerCallbacks struct {
 	// OnHandlerRegistration will be called only one time for each handler version while handler registration is in progress
 	OnHandlerRegistration func(path string, method reflect.Method) (extraData interface{})
 
-	// OnError will be called if any error occures while CallHandler() method is in processing
+	// OnError will be called if any error occurs while CallHandler() method is in processing
 	OnError func(ctx context.Context, err error)
 
 	// OnSuccess will be called if CallHandler() method is successfully finished
@@ -46,6 +46,31 @@ func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks)
 		handlerVersions: make(map[string]*handlerVersion),
 		handlersPath:    strings.TrimSuffix(handlersPath, "/"),
 		callbacks:       callbacks,
+	}
+}
+
+func (hm *HandlersManager) Pkg() string {
+	return hm.handlersPath
+}
+
+func (hm *HandlersManager) MustRegisterHandlers(handlers ...IHandler) {
+	if err := hm.RegisterHandlers(handlers...); err != nil {
+		panic(err)
+	}
+}
+
+func (hm *HandlersManager) RegisterHandlers(handlers ...IHandler) error {
+	for _, h := range handlers {
+		if err := hm.RegisterHandler(h); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (hm *HandlersManager) MustRegisterHandler(h IHandler) {
+	if err := hm.RegisterHandler(h); err != nil {
+		panic(err)
 	}
 }
 
@@ -120,22 +145,22 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		version.method = vMethodType
 		version.handlerStruct = h
 
-		route := fmt.Sprintf("%s/%s/", handlerPath, version.Version)
+		version.Route = fmt.Sprintf("%s/%s/", handlerPath, version.Version)
 
 		if callback := hm.callbacks.OnHandlerRegistration; callback != nil {
-			version.ExtraData = callback(route, vMethodType)
+			version.ExtraData = callback(version.Route, vMethodType)
 		}
 
-		hm.handlerVersions[route] = version
+		hm.handlerVersions[version.Route] = version
 
 		_, version.UseCache = handlerType.MethodByName(handlerMethodPrefix + "UseCache")
 
 		if vMethodType.Type.NumOut() != 2 {
-			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)}
+			return fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)
 		}
 
 		if vMethodType.Type.Out(1).String() != "error" {
-			return &CallHandlerError{ErrorInParameters, fmt.Errorf("Second output parameter should be error (handler %s version number %d)", handlerPath, handlerVersion)}
+			return fmt.Errorf("Second output parameter should be error (handler %s version number %d)", handlerPath, handlerVersion)
 		}
 
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
@@ -238,15 +263,15 @@ func processRequestType(requestType reflect.Type) (*handlerRequest, error) {
 	return request, nil
 }
 
-func processParamFields(request *handlerRequest, fieldType, handlerParametersType reflect.Type, path []string) ([]handlerParameter, error) {
-	var parameters []handlerParameter
+func processParamFields(request *handlerRequest, fieldType, handlerParametersType reflect.Type, path []string) ([]HandlerParameter, error) {
+	var parameters []HandlerParameter
 	if fieldType.Kind() == reflect.Ptr {
 		fieldType = fieldType.Elem()
 	}
 	for i := 0; i < fieldType.NumField(); i++ {
 		fieldType := fieldType.Field(i)
 
-		parameter := handlerParameter{
+		parameter := HandlerParameter{
 			Key:         fieldType.Tag.Get("key"),
 			Path:        path,
 			Name:        fieldType.Name,
@@ -417,7 +442,7 @@ func (hm *HandlersManager) getHandlerByPath(path string) *handlerEntity {
 	return hm.handlers[path]
 }
 
-func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []handlerParameter,
+func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters, parameters []HandlerParameter,
 	parametersStructType reflect.Type) error {
 
 	handlerParametersType := reflect.TypeOf(handlerParameters)
@@ -492,7 +517,7 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 	return nil
 }
 
-func createContainerValue(t reflect.Type, v interface{}, param handlerParameter,
+func createContainerValue(t reflect.Type, v interface{}, param HandlerParameter,
 	handlerParameters IHandlerParameters) (reflect.Value, error) {
 
 	val := reflect.ValueOf(v)

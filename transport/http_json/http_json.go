@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"runtime"
 	"strings"
@@ -105,7 +104,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ctx = h.callbacks.OnInitCtx(req)
 	}
 
-	jsonRequest := (req.Header.Get("Content-Type") == "application/json")
+	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
 	if jsonRequest && req.Method != "POST" {
 		if h.callbacks.OnError != nil {
 			err := &gorpc.CallHandlerError{
@@ -146,7 +145,8 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			var err error
 			cacheKey, err = json.Marshal(params.Interface())
 			if err != nil {
-				log.Print(err.Error())
+				// TODO: call callback.onError?
+				// log.Print(err.Error())
 				cacheKey = nil
 			}
 		}
