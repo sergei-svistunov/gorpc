@@ -119,8 +119,10 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 func createRawURL(url, path string, values url.Values) string {
 	var buf bytes.Buffer
 	buf.WriteString(strings.TrimRight(url, "/"))
-	buf.WriteRune('/')
-	buf.WriteString(strings.TrimLeft(path, "/"))
+//	buf.WriteRune('/')
+//	buf.WriteString(strings.TrimLeft(path, "/"))
+	// path must contain leading /
+	buf.WriteString(path)
 	if len(values) > 0 {
 		buf.WriteRune('?')
 		buf.WriteString(values.Encode())

@@ -53,19 +53,19 @@ func NewExample(client *http.Client, balancer IBalancer, callbacks Callbacks) *E
 
 func (api *Example) TestHandler1V1(ctx context.Context, options TestHandler1V1Args) (*TestHandler1V1Res, error) {
 	var result TestHandler1V1Res
-	err := api.set(ctx, "/test/handler1/v1", options, &result, nil)
+	err := api.set(ctx, "/test/handler1/v1/", options, &result, nil)
 	return &result, err
 }
 
 func (api *Example) TestHandler1V2(ctx context.Context, options TestHandler1V2Args) (*TestHandler1V2Res, error) {
 	var result TestHandler1V2Res
-	err := api.set(ctx, "/test/handler1/v2", options, &result, _TestHandler1V2ErrorsMapping)
+	err := api.set(ctx, "/test/handler1/v2/", options, &result, _TestHandler1V2ErrorsMapping)
 	return &result, err
 }
 
 func (api *Example) TestHandler1V3(ctx context.Context, options TestHandler1V3Request) (*TestHandler1V3Response, error) {
 	var result TestHandler1V3Response
-	err := api.set(ctx, "/test/handler1/v3", options, &result, nil)
+	err := api.set(ctx, "/test/handler1/v3/", options, &result, nil)
 	return &result, err
 }
 

@@ -145,13 +145,13 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		version.method = vMethodType
 		version.handlerStruct = h
 
-		route := fmt.Sprintf("%s/%s/", handlerPath, version.Version)
+		version.Route = fmt.Sprintf("%s/%s/", handlerPath, version.Version)
 
 		if callback := hm.callbacks.OnHandlerRegistration; callback != nil {
-			version.ExtraData = callback(route, vMethodType)
+			version.ExtraData = callback(version.Route, vMethodType)
 		}
 
-		hm.handlerVersions[route] = version
+		hm.handlerVersions[version.Route] = version
 
 		_, version.UseCache = handlerType.MethodByName(handlerMethodPrefix + "UseCache")
 

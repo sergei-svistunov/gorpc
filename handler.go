@@ -5,6 +5,7 @@ import (
 )
 
 type handlerVersion struct {
+	Route         string
 	Errors        []HandlerError
 	Request       *handlerRequest
 	Response      reflect.Type
