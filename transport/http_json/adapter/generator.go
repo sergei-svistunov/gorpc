@@ -10,33 +10,26 @@ import (
 
 	"fmt"
 	"github.com/sergei-svistunov/gorpc"
+	"io"
 )
 
-type handlerInfo struct {
-	Output string
-	Input  string
-	Errors []gorpc.HandlerError
-}
-
 type HttpJsonLibGenerator struct {
-	hm                      *gorpc.HandlersManager
-	pkgName                 string
-	serviceName             string
-	path2HandlerInfoMapping map[string]handlerInfo
-	collectedStructs        map[string]struct{}
-	extraImports            map[string]struct{}
-	convertedStructs        map[reflect.Type]string
+	hm               *gorpc.HandlersManager
+	pkgName          string
+	serviceName      string
+	collectedStructs map[string]struct{}
+	extraImports     map[string]struct{}
+	convertedStructs map[reflect.Type]string
 }
 
 func NewHttpJsonLibGenerator(hm *gorpc.HandlersManager, packageName, serviceName string) *HttpJsonLibGenerator {
 	generator := HttpJsonLibGenerator{
-		hm:                      hm,
-		pkgName:                 "adapter",
-		serviceName:             "ExternalAPI",
-		path2HandlerInfoMapping: map[string]handlerInfo{},
-		collectedStructs:        map[string]struct{}{},
-		extraImports:            map[string]struct{}{},
-		convertedStructs:        map[reflect.Type]string{},
+		hm:               hm,
+		pkgName:          "adapter",
+		serviceName:      "ExternalAPI",
+		collectedStructs: map[string]struct{}{},
+		extraImports:     map[string]struct{}{},
+		convertedStructs: map[reflect.Type]string{},
 	}
 	if packageName != "" {
 		generator.pkgName = packageName
@@ -49,15 +42,14 @@ func NewHttpJsonLibGenerator(hm *gorpc.HandlersManager, packageName, serviceName
 }
 
 func (g *HttpJsonLibGenerator) Generate() ([]byte, error) {
-	clientStructs, err := g.collectStructs()
+	clientAPI, err := g.generateAPI()
 	if err != nil {
 		return nil, err
 	}
 
 	result := regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(mainTemplate, []byte(g.getAPIName()))
 	result = regexp.MustCompilePOSIX(">>>PKG_NAME<<<").ReplaceAll(result, []byte(g.pkgName))
-	result = regexp.MustCompilePOSIX(">>>CLIENT_API_FUNCS<<<").ReplaceAll(result, g.generateAdapterMethods())
-	result = regexp.MustCompilePOSIX(">>>CLIENT_STRUCTS<<<").ReplaceAll(result, clientStructs)
+	result = regexp.MustCompilePOSIX(">>>CLIENT_API<<<").ReplaceAll(result, clientAPI)
 	result = regexp.MustCompilePOSIX(">>>IMPORTS<<<").ReplaceAll(result, g.collectImports())
 
 	return format.Source(result)
@@ -67,71 +59,72 @@ func (g *HttpJsonLibGenerator) getAPIName() string {
 	return strings.Title(g.serviceName)
 }
 
-func (g *HttpJsonLibGenerator) collectStructs() ([]byte, error) {
-	structsBuf := &bytes.Buffer{}
+func (g *HttpJsonLibGenerator) generateAPI() ([]byte, error) {
+	var result bytes.Buffer
+	var typesBuf bytes.Buffer
+
 	for _, path := range g.hm.GetHandlersPaths() {
 		info := g.hm.GetHandlerInfo(path)
 		for _, v := range info.Versions {
-			handlerOutputTypeName, err := g.convertStructToCode(v.Response, structsBuf)
+			inTypeName, outTypeName, err := g.printHandlerInOutTypes(&typesBuf, v.Request.Type, v.Response)
 			if err != nil {
 				return nil, err
 			}
-			handlerInputTypeName, err := g.convertStructToCode(v.Request.Type, structsBuf)
-			if err != nil {
-				return nil, err
-			}
-			g.path2HandlerInfoMapping[v.Route] = handlerInfo{
-				Output: handlerOutputTypeName,
-				Input:  handlerInputTypeName,
-				Errors: v.Errors,
-			}
+			handlerTypeName := strings.Replace(strings.Title(v.Route), "/", "", -1)
+			handlerTypeName = strings.Replace(handlerTypeName, "_", "", -1)
+
+			errVarName := g.printHandlerMethodError(&typesBuf, handlerTypeName, v.Errors)
+
+			method := regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallPostFuncTemplate, []byte(v.Route))
+			method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(handlerTypeName))
+			method = regexp.MustCompilePOSIX(">>>INPUT_TYPE<<<").ReplaceAll(method, []byte(inTypeName))
+			method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(outTypeName))
+			method = regexp.MustCompilePOSIX(">>>HANDLER_ERRORS<<<").ReplaceAll(method, []byte(errVarName))
+			method = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(method, []byte(g.getAPIName()))
+
+			result.Write(method)
 		}
 	}
-	return structsBuf.Bytes(), nil
+
+	typesBuf.WriteTo(&result)
+
+	return result.Bytes(), nil
 }
 
-func (g *HttpJsonLibGenerator) generateAdapterMethods() []byte {
-	var result bytes.Buffer
-	var handlerErrorsBuf bytes.Buffer
+func (g *HttpJsonLibGenerator) printHandlerInOutTypes(w io.Writer, in, out reflect.Type) (inTypeName string, outTypeName string, err error) {
+	inTypeName, err = g.convertStructToCode(w, in)
+	if err != nil {
+		return
+	}
+	outTypeName, err = g.convertStructToCode(w, out)
+	if err != nil {
+		return
+	}
+	return
+}
 
-	for path, handlerInfo := range g.path2HandlerInfoMapping {
-		name := strings.Replace(strings.Title(path), "/", "", -1)
-		name = strings.Replace(name, "_", "", -1)
-
-		handlerErrorsNameMapping := "nil"
-		if len(handlerInfo.Errors) > 0 {
-			handlerErrorsName := name + "Errors"
-			fmt.Fprintf(&handlerErrorsBuf, "type %s int\n\n", handlerErrorsName)
-			handlerErrorsBuf.WriteString("const (\n")
-			for i, e := range handlerInfo.Errors {
-				if i == 0 {
-					fmt.Fprintf(&handlerErrorsBuf, "%s_%s = iota\n", handlerErrorsName, e.Code)
-				} else {
-					fmt.Fprintf(&handlerErrorsBuf, "%s_%s\n", handlerErrorsName, e.Code)
-				}
-			}
-			handlerErrorsBuf.WriteString(")\n\n")
-			fmt.Fprintf(&handlerErrorsBuf, "var _%sMapping = map[string]int{\n", handlerErrorsName)
-			for _, e := range handlerInfo.Errors {
-				fmt.Fprintf(&handlerErrorsBuf, "\"%s\": %s_%s,\n", e.Code, handlerErrorsName, e.Code)
-			}
-			handlerErrorsBuf.WriteString("}\n\n")
-			handlerErrorsNameMapping = "_" + handlerErrorsName + "Mapping"
-		}
-
-		method := regexp.MustCompilePOSIX(">>>HANDLER_PATH<<<").ReplaceAll(handlerCallPostFuncTemplate, []byte(path))
-		method = regexp.MustCompilePOSIX(">>>HANDLER_NAME<<<").ReplaceAll(method, []byte(name))
-		method = regexp.MustCompilePOSIX(">>>INPUT_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Input))
-		method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(handlerInfo.Output))
-		method = regexp.MustCompilePOSIX(">>>HANDLER_ERRORS<<<").ReplaceAll(method, []byte(handlerErrorsNameMapping))
-		method = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(method, []byte(g.getAPIName()))
-
-		result.Write(method)
+func (g *HttpJsonLibGenerator) printHandlerMethodError(w io.Writer, handlerTypeName string, errors []gorpc.HandlerError) string {
+	if len(errors) == 0 {
+		return "nil"
 	}
 
-	handlerErrorsBuf.WriteTo(&result)
-
-	return result.Bytes()
+	handlerErrorsName := handlerTypeName + "Errors"
+	fmt.Fprintf(w, "type %s int\n\n", handlerErrorsName)
+	fmt.Fprint(w, "const (\n")
+	for i, e := range errors {
+		if i == 0 {
+			fmt.Fprintf(w, "%s_%s = iota\n", handlerErrorsName, e.Code)
+		} else {
+			fmt.Fprintf(w, "%s_%s\n", handlerErrorsName, e.Code)
+		}
+	}
+	fmt.Fprint(w, ")\n\n")
+	fmt.Fprintf(w, "var _%sMapping = map[string]int{\n", handlerErrorsName)
+	for _, e := range errors {
+		fmt.Fprintf(w, "\"%s\": %s_%s,\n", e.Code, handlerErrorsName, e.Code)
+	}
+	fmt.Fprint(w, "}\n\n")
+	return "_" + handlerErrorsName + "Mapping"
 }
 
 func (g *HttpJsonLibGenerator) needToMigratePkgStructs(pkgPath string) bool {
@@ -139,7 +132,7 @@ func (g *HttpJsonLibGenerator) needToMigratePkgStructs(pkgPath string) bool {
 	return pkgPath != ""
 }
 
-func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *bytes.Buffer) (typeName string, err error) {
+func (g *HttpJsonLibGenerator) convertStructToCode(w io.Writer, t reflect.Type) (typeName string, err error) {
 	if name, ok := g.convertedStructs[t]; ok {
 		return name, nil
 	}
@@ -158,7 +151,7 @@ func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *byte
 
 	defer func() {
 		for _, newType := range newInternalTypes {
-			if _, err = g.convertStructToCode(newType, codeBuf); err != nil {
+			if _, err = g.convertStructToCode(w, newType); err != nil {
 				return
 			}
 		}
@@ -192,36 +185,36 @@ func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *byte
 		}
 		str += "}\n\n"
 
-		codeBuf.WriteString(str)
+		fmt.Fprint(w, str)
 
 		return
 	case reflect.Ptr:
-		return g.convertStructToCode(t.Elem(), codeBuf)
+		return g.convertStructToCode(w, t.Elem())
 	case reflect.Slice:
 		var elemType string
-		elemType, err = g.convertStructToCode(t.Elem(), codeBuf)
+		elemType, err = g.convertStructToCode(w, t.Elem())
 		if err != nil {
 			return
 		}
 		sliceType := "[]" + elemType
 		if typeName != sliceType {
-			writeType(codeBuf, typeName, sliceType)
+			writeType(w, typeName, sliceType)
 		}
 
 		return
 	case reflect.Map:
-		keyType, _ := g.convertStructToCode(t.Key(), codeBuf)
-		valType, _ := g.convertStructToCode(t.Elem(), codeBuf)
+		keyType, _ := g.convertStructToCode(w, t.Key())
+		valType, _ := g.convertStructToCode(w, t.Elem())
 
 		mapName := "map[" + keyType + "]" + valType
 		if typeName != mapName {
-			writeType(codeBuf, typeName, mapName)
+			writeType(w, typeName, mapName)
 		}
 		return
 	default:
 		// if type is custom we need to describe it in code
 		if typeName != t.Kind().String() && typeName != "interface{}" {
-			writeType(codeBuf, typeName, t.Kind().String())
+			writeType(w, typeName, t.Kind().String())
 			return
 		}
 	}
@@ -229,8 +222,8 @@ func (g *HttpJsonLibGenerator) convertStructToCode(t reflect.Type, codeBuf *byte
 	return
 }
 
-func writeType(codeBuf *bytes.Buffer, name, kind string) {
-	fmt.Fprintf(codeBuf, "type %s %s\n\n", name, kind)
+func writeType(w io.Writer, name, kind string) {
+	fmt.Fprintf(w, "type %s %s\n\n", name, kind)
 }
 
 func (g *HttpJsonLibGenerator) migratedStructName(t reflect.Type) string {

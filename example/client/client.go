@@ -69,6 +69,25 @@ func (api *Example) TestHandler1V3(ctx context.Context, options TestHandler1V3Re
 	return &result, err
 }
 
+type TestHandler1V1Args struct {
+	ReqInt int `json:"req_int"`
+	Int    int `json:"int"`
+}
+
+type TestHandler1V1Res struct {
+	String string `json:"string"`
+	Int    int    `json:"int"`
+}
+
+type TestHandler1V2Args struct {
+	ReqInt        int `json:"req_int"`
+	ReturnErrorID int `json:"error_id"`
+}
+
+type TestHandler1V2Res struct {
+	Int int `json:"int"`
+}
+
 type TestHandler1V2Errors int
 
 const (
@@ -81,30 +100,6 @@ var _TestHandler1V2ErrorsMapping = map[string]int{
 	"ERROR_TYPE1": TestHandler1V2Errors_ERROR_TYPE1,
 	"ERROR_TYPE2": TestHandler1V2Errors_ERROR_TYPE2,
 	"ERROR_TYPE3": TestHandler1V2Errors_ERROR_TYPE3,
-}
-
-type TestHandler1V1Res struct {
-	String string `json:"string"`
-	Int    int    `json:"int"`
-}
-
-type TestHandler1V1Args struct {
-	ReqInt int `json:"req_int"`
-	Int    int `json:"int"`
-}
-
-type TestHandler1V2Res struct {
-	Int int `json:"int"`
-}
-
-type TestHandler1V2Args struct {
-	ReqInt        int `json:"req_int"`
-	ReturnErrorID int `json:"error_id"`
-}
-
-type TestHandler1V3Response struct {
-	Int int  `json:"int"`
-	B   bool `json:"b,omitempty"`
 }
 
 type TestHandler1V3Request struct {
@@ -123,6 +118,11 @@ type TestHandler1V3Nested struct {
 
 type TestHandler1V3Optional struct {
 	Foo bool `json:"foo"`
+}
+
+type TestHandler1V3Response struct {
+	Int int  `json:"int"`
+	B   bool `json:"b,omitempty"`
 }
 
 // TODO: duplicates http_json.httpSessionResponse
@@ -182,8 +182,10 @@ func (api *Example) set(ctx context.Context, path string, data interface{}, buf 
 func createRawURL(url, path string, values url.Values) string {
 	var buf bytes.Buffer
 	buf.WriteString(strings.TrimRight(url, "/"))
-	buf.WriteRune('/')
-	buf.WriteString(strings.TrimLeft(path, "/"))
+	//	buf.WriteRune('/')
+	//	buf.WriteString(strings.TrimLeft(path, "/"))
+	// path must contain leading /
+	buf.WriteString(path)
 	if len(values) > 0 {
 		buf.WriteRune('?')
 		buf.WriteString(values.Encode())

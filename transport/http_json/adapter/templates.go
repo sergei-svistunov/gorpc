@@ -58,9 +58,7 @@ func New>>>API_NAME<<<(client *http.Client, balancer IBalancer, callbacks Callba
 	}
 }
 
->>>CLIENT_API_FUNCS<<<
-
->>>CLIENT_STRUCTS<<<
+>>>CLIENT_API<<<
 
 // TODO: duplicates http_json.httpSessionResponse
 type httpSessionResponse struct {
