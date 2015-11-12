@@ -69,20 +69,18 @@ func (api *Example) TestHandler1V3(ctx context.Context, options TestHandler1V3Re
 	return &result, err
 }
 
-var TestHandler1V2Errors = struct {
-	ERROR_TYPE1 error
-	ERROR_TYPE2 error
-	ERROR_TYPE3 error
-}{
-	ERROR_TYPE1: &ServiceError{Code: 1, Message: "Error 1 description"},
-	ERROR_TYPE2: &ServiceError{Code: 2, Message: "Error 2 description"},
-	ERROR_TYPE3: &ServiceError{Code: 3, Message: "Error 3 description"},
-}
+type TestHandler1V2Errors int
 
-var _TestHandler1V2ErrorsMapping = map[int]*ServiceError{
-	1: TestHandler1V2Errors.ERROR_TYPE1,
-	2: TestHandler1V2Errors.ERROR_TYPE2,
-	3: TestHandler1V2Errors.ERROR_TYPE3,
+const (
+	TestHandler1V2Errors_ERROR_TYPE1 = iota
+	TestHandler1V2Errors_ERROR_TYPE2
+	TestHandler1V2Errors_ERROR_TYPE3
+)
+
+var _TestHandler1V2ErrorsMapping = map[string]int{
+	"ERROR_TYPE1": TestHandler1V2Errors_ERROR_TYPE1,
+	"ERROR_TYPE2": TestHandler1V2Errors_ERROR_TYPE2,
+	"ERROR_TYPE3": TestHandler1V2Errors_ERROR_TYPE3,
 }
 
 type TestHandler1V1Res struct {
@@ -131,10 +129,10 @@ type TestHandler1V3Optional struct {
 type httpSessionResponse struct {
 	Result string          `json:"result"` //OK or ERROR
 	Data   json.RawMessage `json:"data"`
-	Error  int             `json:"error"`
+	Error  string          `json:"error"`
 }
 
-func (api *Example) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[int]*ServiceError) (err error) {
+func (api *Example) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[string]int) (err error) {
 	api.callbacks.OnStart(ctx)
 	defer func() {
 		if r := recover(); r != nil {
@@ -193,7 +191,7 @@ func createRawURL(url, path string, values url.Values) string {
 	return buf.String()
 }
 
-func doRequest(client *http.Client, request *http.Request, buf interface{}, handlerErrors map[int]*ServiceError) error {
+func doRequest(client *http.Client, request *http.Request, buf interface{}, handlerErrors map[string]int) error {
 	// Run
 	response, err := client.Do(request)
 	if err != nil {
@@ -234,16 +232,18 @@ func doRequest(client *http.Client, request *http.Request, buf interface{}, hand
 	}
 
 	if mainResp.Result == "ERROR" {
-		err, ok := handlerErrors[mainResp.Error]
+		errCode, ok := handlerErrors[mainResp.Error]
 		if ok {
-			return err
+			return &ServiceError{
+				Code:    errCode,
+				Message: mainResp.Error,
+			}
 		}
 	}
 
 	return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
 }
 
-// TODO: copies gorpc.HandlerError
 // ServiceError uses to separate critical and non-critical errors which returns in external service response.
 // For this type of error we shouldn't use 500 error counter for librato
 type ServiceError struct {

@@ -201,8 +201,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 				handlerError := HandlerError{
 					UserMessage: errText,
 					Err:         errors.New(errText),
-					Code:        i + 1,
-					Name:        fieldStruct.Name,
+					Code:        fieldStruct.Name,
 				}
 				version.Errors = append(version.Errors, handlerError)
 				fieldVal.Set(

@@ -17,7 +17,7 @@ import (
 type httpSessionResponse struct {
 	Result string      `json:"result"`
 	Data   interface{} `json:"data"`
-	Error  int         `json:"error"`
+	Error  string      `json:"error"`
 }
 
 type APIHandlerCallbacks struct {

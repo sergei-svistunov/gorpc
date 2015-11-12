@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
-	"strconv"
 	"strings"
 
 	"github.com/sergei-svistunov/gorpc"
@@ -207,7 +206,7 @@ func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 				for _, e := range v.Errors {
 					errorsDescription.WriteString("<li>")
 					errorsDescription.WriteString("Code: \"<code>")
-					errorsDescription.WriteString(strconv.Itoa(e.Code))
+					errorsDescription.WriteString(e.Code)
 					errorsDescription.WriteString("</code>\", Data: \"<code>")
 					errorsDescription.WriteString(e.UserMessage)
 					errorsDescription.WriteString("</code>\"</li>")

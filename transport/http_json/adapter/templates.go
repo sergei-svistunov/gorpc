@@ -66,10 +66,10 @@ func New>>>API_NAME<<<(client *http.Client, balancer IBalancer, callbacks Callba
 type httpSessionResponse struct {
 	Result string      ` + "`" + `json:"result"` + "`" + ` //OK or ERROR
 	Data   json.RawMessage ` + "`" + `json:"data"` + "`" + `
-	Error  int      ` + "`" + `json:"error"` + "`" + `
+	Error  string      ` + "`" + `json:"error"` + "`" + `
 }
 
-func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[int]*ServiceError) (err error) {
+func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[string]int) (err error) {
 	api.callbacks.OnStart(ctx)
 	defer func() {
 		if r := recover(); r != nil {
@@ -128,7 +128,7 @@ func createRawURL(url, path string, values url.Values) string {
 	return buf.String()
 }
 
-func doRequest(client *http.Client, request *http.Request, buf interface{}, handlerErrors map[int]*ServiceError) error {
+func doRequest(client *http.Client, request *http.Request, buf interface{}, handlerErrors map[string]int) error {
 	// Run
 	response, err := client.Do(request)
 	if err != nil {
@@ -169,16 +169,18 @@ func doRequest(client *http.Client, request *http.Request, buf interface{}, hand
 	}
 
 	if mainResp.Result == "ERROR" {
-		err, ok := handlerErrors[mainResp.Error]
+		errCode, ok := handlerErrors[mainResp.Error]
 		if ok {
-			return err
+			return &ServiceError{
+				Code: errCode,
+				Message: mainResp.Error,
+			}
 		}
 	}
 
 	return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
 }
 
-// TODO: copies gorpc.HandlerError
 // ServiceError uses to separate critical and non-critical errors which returns in external service response.
 // For this type of error we shouldn't use 500 error counter for librato
 type ServiceError struct {

@@ -11,8 +11,7 @@ const (
 type HandlerError struct {
 	UserMessage string
 	Err         error
-	Code        int
-	Name        string
+	Code        string
 }
 
 func (e *HandlerError) Error() string {
@@ -38,9 +37,9 @@ func (e *CallHandlerError) UserMessage() string {
 	return e.Err.Error()
 }
 
-func (e *CallHandlerError) ErrorCode() int {
+func (e *CallHandlerError) ErrorCode() string {
 	if userErr, ok := e.Err.(*HandlerError); ok {
 		return userErr.Code
 	}
-	return 0
+	return ""
 }

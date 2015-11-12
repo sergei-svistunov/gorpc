@@ -99,18 +99,19 @@ func (g *HttpJsonLibGenerator) generateAdapterMethods() []byte {
 		handlerErrorsNameMapping := "nil"
 		if len(handlerInfo.Errors) > 0 {
 			handlerErrorsName := name + "Errors"
-			fmt.Fprintf(&handlerErrorsBuf, "var %s = struct {\n", handlerErrorsName)
+			fmt.Fprintf(&handlerErrorsBuf, "type %s int\n\n", handlerErrorsName)
+			handlerErrorsBuf.WriteString("const (\n")
+			for i, e := range handlerInfo.Errors {
+				if i == 0 {
+					fmt.Fprintf(&handlerErrorsBuf, "%s_%s = iota\n", handlerErrorsName, e.Code)
+				} else {
+					fmt.Fprintf(&handlerErrorsBuf, "%s_%s\n", handlerErrorsName, e.Code)
+				}
+			}
+			handlerErrorsBuf.WriteString(")\n\n")
+			fmt.Fprintf(&handlerErrorsBuf, "var _%sMapping = map[string]int{\n", handlerErrorsName)
 			for _, e := range handlerInfo.Errors {
-				fmt.Fprintf(&handlerErrorsBuf, "%s error\n", e.Name)
-			}
-			handlerErrorsBuf.WriteString("}{\n")
-			for i, e := range handlerInfo.Errors {
-				fmt.Fprintf(&handlerErrorsBuf, "%s: &ServiceError{Code:%d, Message:%q},\n", e.Name, i+1, e.UserMessage)
-			}
-			handlerErrorsBuf.WriteString("}\n\n")
-			fmt.Fprintf(&handlerErrorsBuf, "var _%sMapping = map[int]*ServiceError{\n", handlerErrorsName)
-			for i, e := range handlerInfo.Errors {
-				fmt.Fprintf(&handlerErrorsBuf, "%d: %s.%s,\n", i+1, handlerErrorsName, e.Name)
+				fmt.Fprintf(&handlerErrorsBuf, "\"%s\": %s_%s,\n", e.Code, handlerErrorsName, e.Code)
 			}
 			handlerErrorsBuf.WriteString("}\n\n")
 			handlerErrorsNameMapping = "_" + handlerErrorsName + "Mapping"
