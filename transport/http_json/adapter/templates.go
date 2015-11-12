@@ -68,7 +68,10 @@ type httpSessionResponse struct {
 }
 
 func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[string]int) (err error) {
-	api.callbacks.OnStart(ctx)
+	if api.callbacks.OnStart != nil {
+		api.callbacks.OnStart(ctx)
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			const size = 64 << 10
@@ -77,14 +80,18 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 			trace := buf[:n]
 
 			err = fmt.Errorf("panic while calling %q service: %v", api.serviceName, r)
-			api.callbacks.OnPanic(ctx, r, trace)
+			if api.callbacks.OnPanic != nil {
+				api.callbacks.OnPanic(ctx, r, trace)
+			}
 		}
 	}()
 
 	var apiURL string
 	apiURL, err = api.balancer.Next()
 	if err != nil {
-		api.callbacks.OnError(ctx, err)
+		if api.callbacks.OnError != nil {
+			api.callbacks.OnError(ctx, err)
+		}
 		return err
 	}
 
@@ -92,33 +99,43 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	encoder := json.NewEncoder(b)
 	if err := encoder.Encode(data); err != nil {
 		err = fmt.Errorf("could not marshal data %+v: %v", data, err)
-		api.callbacks.OnError(ctx, err)
+		if api.callbacks.OnError != nil {
+			api.callbacks.OnError(ctx, err)
+		}
 		return err
 	}
 
 	var req *http.Request
 	req, err = http.NewRequest("POST", createRawURL(apiURL, path, nil), b)
 	if err != nil {
-		api.callbacks.OnError(ctx, err)
+		if api.callbacks.OnError != nil {
+			api.callbacks.OnError(ctx, err)
+		}
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	api.callbacks.OnPrepareRequest(ctx, req)
+	if api.callbacks.OnPrepareRequest != nil {
+		api.callbacks.OnPrepareRequest(ctx, req)
+	}
 
 	if err := doRequest(api.client, req, buf, handlerErrors); err != nil {
-		api.callbacks.OnError(ctx, err)
+		if api.callbacks.OnError != nil {
+			api.callbacks.OnError(ctx, err)
+		}
 		return err
 	}
 
-	api.callbacks.OnFinish(ctx)
+	if api.callbacks.OnFinish != nil {
+		api.callbacks.OnFinish(ctx)
+	}
 	return nil
 }
 
 func createRawURL(url, path string, values url.Values) string {
 	var buf bytes.Buffer
 	buf.WriteString(strings.TrimRight(url, "/"))
-//	buf.WriteRune('/')
-//	buf.WriteString(strings.TrimLeft(path, "/"))
+	//buf.WriteRune('/')
+	//buf.WriteString(strings.TrimLeft(path, "/"))
 	// path must contain leading /
 	buf.WriteString(path)
 	if len(values) > 0 {
@@ -195,9 +212,9 @@ func (err *ServiceError) Error() string {
 `)
 
 var handlerCallPostFuncTemplate = []byte(`
-func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context, options >>>INPUT_TYPE<<<) (*>>>RETURNED_TYPE<<<, error) {
+func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context, options >>>INPUT_TYPE<<<) (>>>RETURNED_TYPE<<<, error) {
     var result >>>RETURNED_TYPE<<<
     err := api.set(ctx, ">>>HANDLER_PATH<<<", options, &result, >>>HANDLER_ERRORS<<<)
-	return &result, err
+	return result, err
 }
 `)

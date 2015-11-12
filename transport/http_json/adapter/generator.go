@@ -96,10 +96,15 @@ func (g *HttpJsonLibGenerator) printHandlerInOutTypes(w io.Writer, in, out refle
 	if err != nil {
 		return
 	}
+
 	outTypeName, err = g.convertStructToCode(w, out)
 	if err != nil {
 		return
 	}
+	if out.Kind() == reflect.Struct || (out.Kind() == reflect.Ptr && out.Elem().Kind() == reflect.Struct) {
+		outTypeName = "*"+outTypeName
+	}
+
 	return
 }
 
