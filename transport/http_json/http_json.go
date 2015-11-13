@@ -70,7 +70,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				h.callbacks.OnPanic(ctx, w, r, trace, req)
 			}
 
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			h.writeError(ctx, w, "", http.StatusInternalServerError)
 		}
 	}()
 
@@ -82,7 +82,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 			h.callbacks.OnError(ctx, w, req, nil, err)
 		}
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		h.writeError(ctx, w, "", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -95,7 +95,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		if h.callbacks.On404 != nil {
 			h.callbacks.On404(ctx, req)
 		}
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		h.writeError(ctx, w, "", http.StatusNotFound)
 		return
 	}
 
@@ -113,7 +113,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 			h.callbacks.OnError(ctx, w, req, nil, err)
 		}
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		h.writeError(ctx, w, "", http.StatusBadRequest)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 			h.callbacks.OnError(ctx, w, req, resp, grpcErr)
 		}
-		http.Error(w, paramsErr.Error(), http.StatusBadRequest)
+		h.writeError(ctx, w, paramsErr.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -165,27 +165,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if cacheEntry != nil {
-		if h.callbacks.OnBeforeWriteResponse != nil {
-			h.callbacks.OnBeforeWriteResponse(ctx, w)
-		}
-
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		var err error
-		if cacheEntry.CompressedContent != nil && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
-			w.Header().Set("Content-Encoding", "gzip")
-			_, err = w.Write(cacheEntry.CompressedContent)
-		} else {
-			_, err = w.Write(cacheEntry.Content)
-		}
-
-		if err != nil && h.callbacks.OnError != nil {
-			handlerError := &gorpc.CallHandlerError{
-				Type: gorpc.ErrorWriteResponse,
-				Err:  err,
-			}
-			h.callbacks.OnError(ctx, w, req, resp, handlerError)
-		}
-
+		h.WriteResponse(ctx, cacheEntry, resp, w, req)
 		return
 	}
 
@@ -204,10 +184,10 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			resp.Data = err.UserMessage()
 			resp.Error = err.ErrorCode()
 		case gorpc.ErrorInParameters:
-			http.Error(w, err.UserMessage(), http.StatusBadRequest)
+			h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
 			return
 		default:
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			h.writeError(ctx, w, "", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -223,7 +203,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 			h.callbacks.OnError(ctx, w, req, resp, handlerError)
 		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		h.writeError(ctx, w, "", http.StatusInternalServerError)
 		return
 	}
 	if len(cacheEntry.Content) > 1024 && (cacheKey != nil || strings.Contains(req.Header.Get("Accept-Encoding"), "gzip")) {
@@ -239,32 +219,47 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		h.callbacks.OnSuccess(ctx, req, resp, startTime)
 	}
 
-	if h.callbacks.OnBeforeWriteResponse != nil {
-		h.callbacks.OnBeforeWriteResponse(ctx, w)
-	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	var werr error
-	if cacheEntry.CompressedContent != nil && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
-		w.Header().Set("Content-Encoding", "gzip")
-		_, werr = w.Write(cacheEntry.CompressedContent)
-	} else {
-		_, werr = w.Write(cacheEntry.Content)
-	}
-	if werr != nil && h.callbacks.OnError != nil {
-		handlerError := &gorpc.CallHandlerError{
-			Type: gorpc.ErrorWriteResponse,
-			Err:  werr,
-		}
-		h.callbacks.OnError(ctx, w, req, resp, handlerError)
-	}
+	h.WriteResponse(ctx, cacheEntry, resp, w, req)
 }
 
 func (h *APIHandler) CanServe(req *http.Request) bool {
 	path := req.URL.Path
 	handler := h.hm.FindHandlerByRoute(path)
-	if handler == nil {
-		return false
+	return handler != nil
+}
+
+func (h *APIHandler) WriteResponse(ctx context.Context, cacheEntry *CacheEntry, resp httpSessionResponse,
+	w http.ResponseWriter, req *http.Request) {
+
+	if h.callbacks.OnBeforeWriteResponse != nil {
+		h.callbacks.OnBeforeWriteResponse(ctx, w)
 	}
-	return true
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	var err error
+	if cacheEntry.CompressedContent != nil && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		_, err = w.Write(cacheEntry.CompressedContent)
+	} else {
+		_, err = w.Write(cacheEntry.Content)
+	}
+
+	if err != nil && h.callbacks.OnError != nil {
+		handlerError := &gorpc.CallHandlerError{
+			Type: gorpc.ErrorWriteResponse,
+			Err:  err,
+		}
+		h.callbacks.OnError(ctx, w, req, resp, handlerError)
+	}
+}
+
+func (h *APIHandler) writeError(ctx context.Context, w http.ResponseWriter, error string, code int) {
+	if h.callbacks.OnBeforeWriteResponse != nil {
+		h.callbacks.OnBeforeWriteResponse(ctx, w)
+	}
+
+	if error == "" {
+		error = http.StatusText(code)
+	}
+	http.Error(w, error, code)
 }
