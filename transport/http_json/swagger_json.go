@@ -3,7 +3,6 @@ package http_json
 import (
 	"bytes"
 	"encoding/json"
-	"net/http"
 	"reflect"
 	"strings"
 
@@ -83,10 +82,6 @@ type Properties map[string]Schema
 
 type Definitions map[string]interface{}
 
-type SwaggerJSONHandler struct {
-	jsonB []byte
-}
-
 // SwaggerJSONCallbacks is struct for callbacks describing
 type SwaggerJSONCallbacks struct {
 	OnPrepareBaseInfoJSON func(info *Info)
@@ -94,26 +89,7 @@ type SwaggerJSONCallbacks struct {
 	Process               func(swagger *Swagger)
 }
 
-func NewSwaggerJSONHandler(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbacks) *SwaggerJSONHandler {
-	jsonB, err := generateSwaggerJSON(hm, callbacks)
-	if err != nil {
-		panic(err)
-	}
-	return &SwaggerJSONHandler{
-		jsonB: jsonB,
-	}
-}
-
-func (h *SwaggerJSONHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Write(h.jsonB)
-}
-
-func (h *SwaggerJSONHandler) GetJSON() []byte {
-	return h.jsonB
-}
-
-func generateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbacks) ([]byte, error) {
+func GenerateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbacks) ([]byte, error) {
 	swagger := &Swagger{
 		SpecVersion: "2.0",
 		Info: Info{
