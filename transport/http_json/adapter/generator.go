@@ -56,7 +56,11 @@ func (g *HttpJsonLibGenerator) Generate() ([]byte, error) {
 }
 
 func (g *HttpJsonLibGenerator) getAPIName() string {
-	return strings.Title(g.serviceName)
+	name := strings.Title(g.serviceName)
+	name = strings.Replace(name, "/", "", -1)
+	name = strings.Replace(name, ".", "", -1)
+	name = strings.Replace(name, " ", "", -1)
+	return name
 }
 
 func (g *HttpJsonLibGenerator) generateAPI() ([]byte, error) {
