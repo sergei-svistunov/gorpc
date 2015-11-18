@@ -13,6 +13,8 @@ import (
 	"golang.org/x/net/context"
 )
 
+var isSamePackagePathException = map[string]bool{"time": true}
+
 type handlerEntity struct {
 	path          string
 	versions      []handlerVersion
@@ -230,15 +232,18 @@ func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type
 	}
 
 	encountered[basicType] = true
+	pkgPath := basicType.PkgPath()
 
 	if basicType.Kind() == reflect.Slice {
 		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
 	} else if basicType.Kind() == reflect.Ptr {
 		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
-	} else if len(basicType.PkgPath()) == 0 {
+	} else if len(pkgPath) == 0 {
 		return nil
-	} else if basicType.PkgPath() != packagePath {
-		return errors.New(`Structure must be defined in the same package`)
+	} else if _, exception := isSamePackagePathException[pkgPath]; exception {
+		return nil
+	} else if pkgPath != packagePath {
+		return fmt.Errorf(`Structure must be fully defined in the same package. Type '%s' is not.`, basicType)
 	} else if basicType.Kind() == reflect.Struct {
 		for i := 0; i < basicType.NumField(); i++ {
 			err := checkStructureIsInTheSamePackage(packagePath, basicType.Field(i).Type, encountered)

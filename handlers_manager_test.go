@@ -23,15 +23,18 @@ type HandlersManagerSuite struct {
 func (s *HandlersManagerSuite) SetupTest() {
 	s.hm = NewHandlersManager("github.com/sergei-svistunov/gorpc", HandlersManagerCallbacks{})
 
-	s.NoError(s.hm.RegisterHandler(test_handler1.NewHandler()))
+	if !s.NoError(s.hm.RegisterHandler(test_handler1.NewHandler())) {
+		handler := &test_handler1.Handler{}
+		s.T().Fatalf("Can't register '%s'", handler.Caption())
+	}
 
 	err := s.hm.RegisterHandler(test_handler_foreign_arguments.NewHandler())
 	s.Error(err)
-	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' parameter: Structure must be defined in the same package`, `/test/handler_foreign_arguments`, `V1`))
+	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' parameter: Structure must be fully defined in the same package. Type 'args.V1Args' is not.`, `/test/handler_foreign_arguments`, `V1`))
 
 	err = s.hm.RegisterHandler(test_handler_foreign_return_values.NewHandler())
 	s.Error(err)
-	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' return value: Structure must be defined in the same package`, `/test/handler_foreign_return_values`, `V1`))
+	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' return value: Structure must be fully defined in the same package. Type 'return_values.V1Res' is not.`, `/test/handler_foreign_return_values`, `V1`))
 }
 
 func TestRunSuite(t *testing.T) {
