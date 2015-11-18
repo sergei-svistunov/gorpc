@@ -10,6 +10,15 @@ type V3Request struct {
 	StringSlice []string              `json:"slices" key:"slices" description:"Slice field"`
 	ObjMap      map[string]V3Optional `json:"obj_map" key:"obj_map" description:"Map field"`
 	ObjSlice    []V3Optional          `json:"obj_slice" key:"obj_slice" description:"Slice field"`
+	Recursive   *V3Recursive1         `json:"recursive,omitempty" key:"recursive" description:"Recursive field"`
+}
+
+type V3Recursive1 struct {
+	Recursive []V3Recursive2 `json:"recursive,omitempty" key:"recursive" description:"Recursive field"`
+}
+
+type V3Recursive2 struct {
+	Recursive *V3Recursive1 `json:"recursive,omitempty" key:"recursive" description:"Recursive field"`
 }
 
 type V3Nested struct {
