@@ -134,7 +134,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return fmt.Errorf("Type of opts for version number %d of handler %s must be Ptr to Struct", handlerVersion, handlerPath)
 		}
 
-		err := checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), paramsType)
+		err := checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), paramsType, nil)
 		if err != nil {
 			return fmt.Errorf("Handler '%s' version '%s' parameter: %s", handlerPath, vMethodType.Name, err)
 		}
@@ -166,7 +166,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		err = checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), version.Response)
+		err = checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), version.Response, nil)
 		if err != nil {
 			return fmt.Errorf("Handler '%s' version '%s' return value: %s", handlerPath, vMethodType.Name, err)
 		}
@@ -220,18 +220,28 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	return nil
 }
 
-func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type) error {
+func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type, encountered map[reflect.Type]bool) error {
+	if encountered == nil {
+		encountered = make(map[reflect.Type]bool)
+	}
+
+	if encountered[basicType] {
+		return nil
+	}
+
+	encountered[basicType] = true
+
 	if basicType.Kind() == reflect.Slice {
-		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem())
+		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
 	} else if basicType.Kind() == reflect.Ptr {
-		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem())
+		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
 	} else if len(basicType.PkgPath()) == 0 {
 		return nil
 	} else if basicType.PkgPath() != packagePath {
 		return errors.New(`Structure must be defined in the same package`)
 	} else if basicType.Kind() == reflect.Struct {
 		for i := 0; i < basicType.NumField(); i++ {
-			err := checkStructureIsInTheSamePackage(packagePath, basicType.Field(i).Type)
+			err := checkStructureIsInTheSamePackage(packagePath, basicType.Field(i).Type, encountered)
 			if err != nil {
 				return err
 			}
@@ -255,7 +265,7 @@ func processRequestType(requestType reflect.Type) (*handlerRequest, error) {
 	}
 
 	var err error
-	request.Fields, err = processParamFields(request, request.Type, handlerParametersType, nil)
+	request.Fields, err = processParamFields(request, request.Type, handlerParametersType, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -263,11 +273,22 @@ func processRequestType(requestType reflect.Type) (*handlerRequest, error) {
 	return request, nil
 }
 
-func processParamFields(request *handlerRequest, fieldType, handlerParametersType reflect.Type, path []string) ([]HandlerParameter, error) {
-	var parameters []HandlerParameter
+func processParamFields(request *handlerRequest, fieldType, handlerParametersType reflect.Type, path []string, encountered map[reflect.Type][]HandlerParameter) ([]HandlerParameter, error) {
+	if encountered == nil {
+		encountered = make(map[reflect.Type][]HandlerParameter)
+	}
+
 	if fieldType.Kind() == reflect.Ptr {
 		fieldType = fieldType.Elem()
 	}
+
+	if encountered[fieldType] != nil {
+		return encountered[fieldType], nil
+	}
+
+	parameters := make([]HandlerParameter, fieldType.NumField())
+	encountered[fieldType] = parameters
+
 	for i := 0; i < fieldType.NumField(); i++ {
 		fieldType := fieldType.Field(i)
 
@@ -319,7 +340,7 @@ func processParamFields(request *handlerRequest, fieldType, handlerParametersTyp
 				t = t.Elem()
 			}
 			if t.Kind() == reflect.Struct {
-				parameter.Fields, err = processParamFields(request, t, handlerParametersType, path)
+				parameter.Fields, err = processParamFields(request, t, handlerParametersType, path, copyEncounteredMap(encountered))
 				request.Flat = false
 				if err != nil {
 					return nil, err
@@ -327,9 +348,17 @@ func processParamFields(request *handlerRequest, fieldType, handlerParametersTyp
 			}
 		}
 
-		parameters = append(parameters, parameter)
+		parameters[i] = parameter
 	}
 	return parameters, nil
+}
+
+func copyEncounteredMap(m map[reflect.Type][]HandlerParameter) map[reflect.Type][]HandlerParameter {
+	mCopy := make(map[reflect.Type][]HandlerParameter, len(m))
+	for k, v := range m {
+		mCopy[k] = v
+	}
+	return mCopy
 }
 
 // FindHandler returns a handler by given non-versioned path and given version
