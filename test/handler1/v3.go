@@ -1,6 +1,9 @@
 package handler1
 
-import "golang.org/x/net/context"
+import (
+	"golang.org/x/net/context"
+	"time"
+)
 
 type V3Request struct {
 	ReqInt      int                   `json:"req_int" key:"req_int" description:"Required integer argument"`
@@ -18,6 +21,7 @@ type V3Recursive1 struct {
 }
 
 type V3Recursive2 struct {
+	Time      time.Duration `json:"time,omitempty" key:"time" description:"Time duration field"`
 	Recursive *V3Recursive1 `json:"recursive,omitempty" key:"recursive" description:"Recursive field"`
 }
 
