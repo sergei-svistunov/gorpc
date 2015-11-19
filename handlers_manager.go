@@ -238,7 +238,7 @@ func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type
 		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
 	} else if basicType.Kind() == reflect.Ptr {
 		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
-	} else if len(pkgPath) == 0 {
+	} else if len(pkgPath) == 0 || isPrimitiveType(basicType) {
 		return nil
 	} else if _, exception := isSamePackagePathException[pkgPath]; exception {
 		return nil
@@ -255,6 +255,18 @@ func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type
 	}
 
 	return errors.New(`Unreachable code`)
+}
+
+func isPrimitiveType(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.String, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16,
+		reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128:
+		return true
+	default:
+		return false
+	}
 }
 
 func processRequestType(requestType reflect.Type) (*handlerRequest, error) {
