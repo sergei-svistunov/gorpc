@@ -156,6 +156,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		hm.handlerVersions[version.Route] = version
 
 		_, version.UseCache = handlerType.MethodByName(handlerMethodPrefix + "UseCache")
+		_, version.UseEtag = handlerType.MethodByName(handlerMethodPrefix + "UseEtag")
 
 		if vMethodType.Type.NumOut() != 2 {
 			return fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)

@@ -156,17 +156,14 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				if h.callbacks.OnCacheHit != nil {
 					h.callbacks.OnCacheHit(ctx, cacheEntry)
 				}
-			} else {
-				if h.callbacks.OnCacheMiss != nil {
-					h.callbacks.OnCacheMiss(ctx)
-				}
+				h.WriteResponse(ctx, startTime, cacheEntry, resp, w, req)
+				return
+			}
+
+			if h.callbacks.OnCacheMiss != nil {
+				h.callbacks.OnCacheMiss(ctx)
 			}
 		}
-	}
-
-	if cacheEntry != nil {
-		h.WriteResponse(ctx, cacheEntry, resp, w, req)
-		return
 	}
 
 	handlerResponse, err := h.hm.CallHandler(ctx, handler, params)
@@ -206,6 +203,9 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		h.writeError(ctx, w, "", http.StatusInternalServerError)
 		return
 	}
+	if handler.UseEtag {
+		cacheEntry.Hash, _ = CalculateEtagHash(cacheEntry.Content)
+	}
 	if len(cacheEntry.Content) > 1024 && (cacheKey != nil || strings.Contains(req.Header.Get("Accept-Encoding"), "gzip")) {
 		buf := bytes.NewBuffer(cacheEntry.CompressedContent)
 		gzip.NewWriter(buf).Write(cacheEntry.Content)
@@ -215,11 +215,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		h.cache.Put(cacheKey, cacheEntry)
 	}
 
-	if h.callbacks.OnSuccess != nil {
-		h.callbacks.OnSuccess(ctx, req, resp, startTime)
-	}
-
-	h.WriteResponse(ctx, cacheEntry, resp, w, req)
+	h.WriteResponse(ctx, startTime, cacheEntry, resp, w, req)
 }
 
 func (h *APIHandler) CanServe(req *http.Request) bool {
@@ -228,11 +224,29 @@ func (h *APIHandler) CanServe(req *http.Request) bool {
 	return handler != nil
 }
 
-func (h *APIHandler) WriteResponse(ctx context.Context, cacheEntry *CacheEntry, resp httpSessionResponse,
+func (h *APIHandler) WriteResponse(ctx context.Context, startTime time.Time, cacheEntry *CacheEntry, resp httpSessionResponse,
 	w http.ResponseWriter, req *http.Request) {
+
+	if h.callbacks.OnSuccess != nil {
+		h.callbacks.OnSuccess(ctx, req, resp, startTime)
+	}
 
 	if h.callbacks.OnBeforeWriteResponse != nil {
 		h.callbacks.OnBeforeWriteResponse(ctx, w)
+	}
+
+	if cacheEntry.Hash != "" {
+		w.Header().Set("Etag", cacheEntry.Hash)
+		if cacheEntry.Hash == req.Header.Get("If-None-Match") {
+			if h.callbacks.OnSuccess != nil {
+				h.callbacks.OnSuccess(ctx, req, resp, startTime)
+			}
+			if h.callbacks.OnBeforeWriteResponse != nil {
+				h.callbacks.OnBeforeWriteResponse(ctx, w)
+			}
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
