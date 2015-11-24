@@ -13,7 +13,7 @@ type Swagger struct {
 	SpecVersion string              `json:"swagger"`
 	Info        Info                `json:"info"`
 	BasePath    string              `json:"basePath"`
-	Host        string              `json:"host,omitempty"`
+	Port        uint16              `json:"port,omitempty"`
 	Schemes     []string            `json:"schemes,omitempty"`
 	Consumes    []string            `json:"consumes,omitempty"`
 	Produces    []string            `json:"produces,omitempty"`
@@ -89,7 +89,7 @@ type SwaggerJSONCallbacks struct {
 	Process               func(swagger *Swagger)
 }
 
-func GenerateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbacks) ([]byte, error) {
+func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
 	swagger := &Swagger{
 		SpecVersion: "2.0",
 		Info: Info{
@@ -112,6 +112,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 			If a response is compressed then server sends the header "Content-Encoding: gzip".</p>`,
 		},
 		BasePath:    "/",
+		Port:        apiPort,
 		Consumes:    []string{"application/json"},
 		Produces:    []string{"application/json"},
 		Paths:       map[string]PathItem{},
