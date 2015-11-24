@@ -152,14 +152,6 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 				ExtraData:   v.ExtraData,
 			}
 
-			if v.UseCache {
-				operation.Description += ".<br/>Handler caches response."
-			}
-
-			if v.UseEtag {
-				operation.Description += ".<br/>Handler supports ETAG."
-			}
-
 			if !v.Request.Flat {
 				bodySchema := getOrCreateSchema(swagger.Definitions, v.Request.Type)
 				param := &Parameter{

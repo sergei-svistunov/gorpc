@@ -14,6 +14,37 @@ import (
 	"golang.org/x/net/context"
 )
 
+const requestInfoKey = "http_json_info"
+
+type requestInfo struct {
+	UseCache bool
+	UseEtag  bool
+}
+
+func fromContext(ctx context.Context) (info *requestInfo, ok bool) {
+	if val := ctx.Value(requestInfoKey); val != nil {
+		info, ok = val.(*requestInfo)
+	}
+	return
+}
+
+func newContext(parent context.Context, info *requestInfo) context.Context {
+	return context.WithValue(parent, requestInfoKey, info)
+}
+
+func DisableCache(ctx context.Context) {
+	if info, ok := fromContext(ctx); ok {
+		info.UseCache = false
+		info.UseEtag = false
+	}
+}
+
+func DisableETag(ctx context.Context) {
+	if info, ok := fromContext(ctx); ok {
+		info.UseEtag = false
+	}
+}
+
 type httpSessionResponse struct {
 	Result string      `json:"result"`
 	Data   interface{} `json:"data"`
@@ -103,6 +134,11 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if h.callbacks.OnInitCtx != nil {
 		ctx = h.callbacks.OnInitCtx(req)
 	}
+	requestInfo := &requestInfo{
+		UseCache: true,
+		UseEtag:  true,
+	}
+	ctx = newContext(ctx, requestInfo)
 
 	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
 	if jsonRequest && req.Method != "POST" {
@@ -138,7 +174,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	var cacheKey []byte
 	var cacheEntry *CacheEntry
-	if h.cache != nil && handler.UseCache {
+	if h.cache != nil {
 		if h.callbacks.GetCacheKey != nil {
 			cacheKey = h.callbacks.GetCacheKey(ctx, req, params.Interface())
 		} else {
@@ -146,7 +182,6 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			cacheKey, err = json.Marshal(params.Interface())
 			if err != nil {
 				// TODO: call callback.onError?
-				// log.Print(err.Error())
 				cacheKey = nil
 			}
 		}
@@ -156,7 +191,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				if h.callbacks.OnCacheHit != nil {
 					h.callbacks.OnCacheHit(ctx, cacheEntry)
 				}
-				h.WriteResponse(ctx, startTime, cacheEntry, resp, w, req)
+				h.writeResponse(ctx, startTime, cacheEntry, resp, w, req)
 				return
 			}
 
@@ -203,19 +238,19 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		h.writeError(ctx, w, "", http.StatusInternalServerError)
 		return
 	}
-	if handler.UseEtag {
-		cacheEntry.Hash, _ = CalculateEtagHash(cacheEntry.Content)
-	}
 	if len(cacheEntry.Content) > 1024 && (cacheKey != nil || strings.Contains(req.Header.Get("Accept-Encoding"), "gzip")) {
 		buf := bytes.NewBuffer(cacheEntry.CompressedContent)
 		gzip.NewWriter(buf).Write(cacheEntry.Content)
 	}
 
-	if h.cache != nil && cacheKey != nil {
+	if requestInfo.UseCache && h.cache != nil && cacheKey != nil {
+		if requestInfo.UseEtag {
+			cacheEntry.hash, _ = etagHash(cacheEntry.Content)
+		}
 		h.cache.Put(cacheKey, cacheEntry)
 	}
 
-	h.WriteResponse(ctx, startTime, cacheEntry, resp, w, req)
+	h.writeResponse(ctx, startTime, cacheEntry, resp, w, req)
 }
 
 func (h *APIHandler) CanServe(req *http.Request) bool {
@@ -224,7 +259,7 @@ func (h *APIHandler) CanServe(req *http.Request) bool {
 	return handler != nil
 }
 
-func (h *APIHandler) WriteResponse(ctx context.Context, startTime time.Time, cacheEntry *CacheEntry, resp httpSessionResponse,
+func (h *APIHandler) writeResponse(ctx context.Context, startTime time.Time, cacheEntry *CacheEntry, resp httpSessionResponse,
 	w http.ResponseWriter, req *http.Request) {
 
 	if h.callbacks.OnSuccess != nil {
@@ -235,9 +270,9 @@ func (h *APIHandler) WriteResponse(ctx context.Context, startTime time.Time, cac
 		h.callbacks.OnBeforeWriteResponse(ctx, w)
 	}
 
-	if cacheEntry.Hash != "" {
-		w.Header().Set("Etag", cacheEntry.Hash)
-		if cacheEntry.Hash == req.Header.Get("If-None-Match") {
+	if cacheEntry.hash != "" {
+		w.Header().Set("Etag", cacheEntry.hash)
+		if cacheEntry.hash == req.Header.Get("If-None-Match") {
 			if h.callbacks.OnSuccess != nil {
 				h.callbacks.OnSuccess(ctx, req, resp, startTime)
 			}

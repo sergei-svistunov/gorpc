@@ -10,5 +10,5 @@ type ICache interface {
 type CacheEntry struct {
 	Content           []byte
 	CompressedContent []byte
-	Hash              string
+	hash              string
 }

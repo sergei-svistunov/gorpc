@@ -15,8 +15,6 @@ type V1Res struct {
 	structField *return_values.V1Res
 }
 
-func (*Handler) V1UseCache() {}
-
 func (*Handler) V1(ctx context.Context, opts *v1Args) ([]*V1Res, error) {
 	result := []*V1Res{
 		{
