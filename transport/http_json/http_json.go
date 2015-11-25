@@ -38,10 +38,23 @@ func EnableCacheInTransport(ctx context.Context) {
 	}
 }
 
+func DisableCacheInTransport(ctx context.Context) {
+	if info, ok := fromContext(ctx); ok {
+		info.UseCache = false
+		info.UseETag = false
+	}
+}
+
 func EnableETag(ctx context.Context) {
 	if info, ok := fromContext(ctx); ok {
 		info.UseCache = true
 		info.UseETag = true
+	}
+}
+
+func DisableETag(ctx context.Context) {
+	if info, ok := fromContext(ctx); ok {
+		info.UseETag = false
 	}
 }
 
