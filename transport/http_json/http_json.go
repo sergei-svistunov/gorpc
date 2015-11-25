@@ -18,7 +18,7 @@ const requestInfoKey = "http_json_info"
 
 type requestInfo struct {
 	UseCache bool
-	UseEtag  bool
+	UseETag  bool
 }
 
 func fromContext(ctx context.Context) (info *requestInfo, ok bool) {
@@ -32,16 +32,16 @@ func newContext(parent context.Context, info *requestInfo) context.Context {
 	return context.WithValue(parent, requestInfoKey, info)
 }
 
-func DisableCache(ctx context.Context) {
+func EnableCacheInTransport(ctx context.Context) {
 	if info, ok := fromContext(ctx); ok {
-		info.UseCache = false
-		info.UseEtag = false
+		info.UseCache = true
 	}
 }
 
-func DisableETag(ctx context.Context) {
+func EnableETag(ctx context.Context) {
 	if info, ok := fromContext(ctx); ok {
-		info.UseEtag = false
+		info.UseCache = true
+		info.UseETag = true
 	}
 }
 
@@ -134,10 +134,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if h.callbacks.OnInitCtx != nil {
 		ctx = h.callbacks.OnInitCtx(req)
 	}
-	requestInfo := &requestInfo{
-		UseCache: true,
-		UseEtag:  true,
-	}
+	requestInfo := &requestInfo{}
 	ctx = newContext(ctx, requestInfo)
 
 	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
@@ -244,7 +241,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if requestInfo.UseCache && h.cache != nil && cacheKey != nil {
-		if requestInfo.UseEtag {
+		if requestInfo.UseETag {
 			cacheEntry.hash, _ = etagHash(cacheEntry.Content)
 		}
 		h.cache.Put(cacheKey, cacheEntry)
