@@ -124,8 +124,10 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, callbacks SwaggerJSONCallbac
 			  </ul>
 			</p>
 			<h3>Response compression</h3>
-			<p>API compress a respone using gzip if the header "Accept-Encoding" contains "gzip" and a response is bigger or equal 1Kb.
-			If a response is compressed then server sends the header "Content-Encoding: gzip".</p>`,
+			<p>API compress a response using gzip if the header "Accept-Encoding" contains "gzip" and a response is bigger or equal 1Kb.
+			If a response is compressed then server sends the header "Content-Encoding: gzip".</p>
+			<h3>Transport cache</h3>
+			<p>API can cache response of handlers and provides ETag support with 304 header.</p>`,
 		},
 		BasePath:    "/",
 		Consumes:    []string{"application/json"},
