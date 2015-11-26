@@ -9,6 +9,7 @@ var mainImports = []string{
 	"net/url",
 	"runtime",
 	"strings",
+	"time",
 	"golang.org/x/net/context",
 }
 
@@ -25,10 +26,10 @@ type IBalancer interface {
 }
 
 type Callbacks struct {
-	OnStart func(ctx context.Context)
-	OnFinish func(ctx context.Context)
-	OnError func(ctx context.Context, err error)
-	OnPanic func(ctx context.Context, r interface{}, trace []byte)
+	OnStart func(ctx context.Context, req *http.Request)
+	OnFinish func(ctx context.Context, req *http.Request, startTime time.Time)
+	OnError func(ctx context.Context, req *http.Request, err error)
+	OnPanic func(ctx context.Context, req *http.Request, r interface{}, trace []byte)
 	OnPrepareRequest func(ctx context.Context, req *http.Request)
 }
 
@@ -68,8 +69,17 @@ type httpSessionResponse struct {
 }
 
 func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[string]int) (err error) {
+	startTime := time.Now()
+
+	var apiURL string
+	var req *http.Request
+
 	if api.callbacks.OnStart != nil {
-		api.callbacks.OnStart(ctx)
+		api.callbacks.OnStart(ctx, req)
+	}
+
+	if api.callbacks.OnFinish != nil {
+		defer api.callbacks.OnFinish(ctx, req, startTime)
 	}
 
 	defer func() {
@@ -81,16 +91,15 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 
 			err = fmt.Errorf("panic while calling %q service: %v", api.serviceName, r)
 			if api.callbacks.OnPanic != nil {
-				api.callbacks.OnPanic(ctx, r, trace)
+				api.callbacks.OnPanic(ctx, req, r, trace)
 			}
 		}
 	}()
 
-	var apiURL string
 	apiURL, err = api.balancer.Next()
 	if err != nil {
 		if api.callbacks.OnError != nil {
-			api.callbacks.OnError(ctx, err)
+			api.callbacks.OnError(ctx, req, err)
 		}
 		return err
 	}
@@ -100,16 +109,15 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	if err := encoder.Encode(data); err != nil {
 		err = fmt.Errorf("could not marshal data %+v: %v", data, err)
 		if api.callbacks.OnError != nil {
-			api.callbacks.OnError(ctx, err)
+			api.callbacks.OnError(ctx, req, err)
 		}
 		return err
 	}
 
-	var req *http.Request
 	req, err = http.NewRequest("POST", createRawURL(apiURL, path, nil), b)
 	if err != nil {
 		if api.callbacks.OnError != nil {
-			api.callbacks.OnError(ctx, err)
+			api.callbacks.OnError(ctx, req, err)
 		}
 		return err
 	}
@@ -120,14 +128,11 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 
 	if err := doRequest(api.client, req, buf, handlerErrors); err != nil {
 		if api.callbacks.OnError != nil {
-			api.callbacks.OnError(ctx, err)
+			api.callbacks.OnError(ctx, req, err)
 		}
 		return err
 	}
 
-	if api.callbacks.OnFinish != nil {
-		api.callbacks.OnFinish(ctx)
-	}
 	return nil
 }
 
