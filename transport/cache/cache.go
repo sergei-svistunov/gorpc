@@ -1,4 +1,4 @@
-package http_json
+package cache
 
 type ICache interface {
 	// Get returns response (response's content, compressed) by key
@@ -10,5 +10,5 @@ type ICache interface {
 type CacheEntry struct {
 	Content           []byte
 	CompressedContent []byte
-	hash              string
+	Hash              string
 }
