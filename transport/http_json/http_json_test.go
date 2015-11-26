@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/sergei-svistunov/gorpc"
+	"github.com/sergei-svistunov/gorpc/transport/cache"
 	"github.com/stretchr/testify/suite"
 
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
@@ -22,7 +23,7 @@ func (s *HttpJSONSute) SetupTest() {
 	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{})
 	s.NoError(hm.RegisterHandler(test_handler1.NewHandler()))
 
-	s.server = httptest.NewUnstartedServer(NewAPIHandler(hm, &testCache{}, APIHandlerCallbacks{}))
+	s.server = httptest.NewUnstartedServer(NewAPIHandler(hm, cache.NewMapCache(), APIHandlerCallbacks{}))
 }
 
 func TestRunHttpJSONSute(t *testing.T) {
@@ -57,7 +58,7 @@ func BenchmarkHttpJSON_CallWithRequiredArguments_Success(b *testing.B) {
 		b.Fatal(err.Error())
 	}
 
-	handler := NewAPIHandler(hm, &testCache{}, APIHandlerCallbacks{})
+	handler := NewAPIHandler(hm, cache.NewMapCache(), APIHandlerCallbacks{})
 	request, _ := http.NewRequest("GET", "/test/handler1/v1/?req_int=123", nil)
 	recorder := httptest.NewRecorder()
 
