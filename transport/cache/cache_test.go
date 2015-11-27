@@ -1,4 +1,4 @@
-package http_json
+package cache
 
 import (
 	"sync"
@@ -6,34 +6,9 @@ import (
 	"time"
 )
 
-type testCache struct {
-	values map[string]*CacheEntry
-	mtx    sync.RWMutex
-	*LocalCacheLocker
-}
-
-func NewTestCache() *testCache {
-	return &testCache{
-		values:           make(map[string]*CacheEntry),
-		LocalCacheLocker: NewLocalCacheLocker(),
-	}
-}
-
-func (c *testCache) Get(key []byte) *CacheEntry {
-	c.mtx.RLock()
-	defer c.mtx.RUnlock()
-	return c.values[string(key)]
-}
-
-func (c *testCache) Put(key []byte, entry *CacheEntry) {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	c.values[string(key)] = entry
-}
-
 func TestLockCache(t *testing.T) {
 	testKey := []byte("test_key")
-	cache := NewTestCache()
+	cache := NewMapCache()
 	var wg sync.WaitGroup
 
 	wg.Add(1)

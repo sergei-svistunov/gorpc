@@ -1,4 +1,4 @@
-package http_json
+package cache
 
 type ICache interface {
 	// Get returns response (response's content, compressed) by key

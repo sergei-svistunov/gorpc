@@ -1,4 +1,4 @@
-package http_json
+package cache
 
 import "sync"
 

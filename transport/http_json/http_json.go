@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sergei-svistunov/gorpc"
+	"github.com/sergei-svistunov/gorpc/transport/cache"
 	"golang.org/x/net/context"
 )
 
@@ -29,18 +30,18 @@ type APIHandlerCallbacks struct {
 	OnBeforeWriteResponse func(ctx context.Context, w http.ResponseWriter)
 	OnSuccess             func(ctx context.Context, req *http.Request, handlerResponse interface{}, startTime time.Time)
 	On404                 func(ctx context.Context, req *http.Request)
-	OnCacheHit            func(ctx context.Context, entry *CacheEntry)
+	OnCacheHit            func(ctx context.Context, entry *cache.CacheEntry)
 	OnCacheMiss           func(ctx context.Context)
 	GetCacheKey           func(ctx context.Context, req *http.Request, params interface{}) []byte
 }
 
 type APIHandler struct {
 	hm        *gorpc.HandlersManager
-	cache     ICache
+	cache     cache.ICache
 	callbacks APIHandlerCallbacks
 }
 
-func NewAPIHandler(hm *gorpc.HandlersManager, cache ICache, callbacks APIHandlerCallbacks) *APIHandler {
+func NewAPIHandler(hm *gorpc.HandlersManager, cache cache.ICache, callbacks APIHandlerCallbacks) *APIHandler {
 	return &APIHandler{
 		hm:        hm,
 		cache:     cache,
@@ -137,7 +138,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var cacheKey []byte
-	var cacheEntry *CacheEntry
+	var cacheEntry *cache.CacheEntry
 	if h.cache != nil && handler.UseCache {
 		if h.callbacks.GetCacheKey != nil {
 			cacheKey = h.callbacks.GetCacheKey(ctx, req, params.Interface())
@@ -195,7 +196,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	cacheEntry = &CacheEntry{}
+	cacheEntry = &cache.CacheEntry{}
 	var jerr error
 	cacheEntry.Content, jerr = json.Marshal(resp)
 	if jerr != nil {
@@ -231,7 +232,7 @@ func (h *APIHandler) CanServe(req *http.Request) bool {
 	return handler != nil
 }
 
-func (h *APIHandler) WriteResponse(ctx context.Context, cacheEntry *CacheEntry, resp httpSessionResponse,
+func (h *APIHandler) WriteResponse(ctx context.Context, cacheEntry *cache.CacheEntry, resp httpSessionResponse,
 	w http.ResponseWriter, req *http.Request) {
 
 	if h.callbacks.OnBeforeWriteResponse != nil {
