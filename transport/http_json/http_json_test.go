@@ -22,7 +22,7 @@ func (s *HttpJSONSute) SetupTest() {
 	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{})
 	s.NoError(hm.RegisterHandler(test_handler1.NewHandler()))
 
-	s.server = httptest.NewUnstartedServer(NewAPIHandler(hm, &testCache{}, APIHandlerCallbacks{}))
+	s.server = httptest.NewUnstartedServer(NewAPIHandler(hm, NewTestCache(), APIHandlerCallbacks{}))
 }
 
 func TestRunHttpJSONSute(t *testing.T) {
@@ -57,7 +57,7 @@ func BenchmarkHttpJSON_CallWithRequiredArguments_Success(b *testing.B) {
 		b.Fatal(err.Error())
 	}
 
-	handler := NewAPIHandler(hm, &testCache{}, APIHandlerCallbacks{})
+	handler := NewAPIHandler(hm, NewTestCache(), APIHandlerCallbacks{})
 	request, _ := http.NewRequest("GET", "/test/handler1/v1/?req_int=123", nil)
 	recorder := httptest.NewRecorder()
 

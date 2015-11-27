@@ -151,6 +151,9 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		if cacheKey != nil {
+			h.cache.Lock(cacheKey)
+			defer h.cache.Unlock(cacheKey)
+
 			cacheEntry = h.cache.Get(cacheKey)
 			if cacheEntry != nil {
 				if h.callbacks.OnCacheHit != nil {
