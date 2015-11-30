@@ -51,7 +51,12 @@ func NewAPIHandler(hm *gorpc.HandlersManager, cache cache.ICache, callbacks APIH
 
 func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	startTime := time.Now()
+
+	// TODO: create context with reasonable timeout
 	ctx := context.Background()
+	if h.callbacks.OnInitCtx != nil {
+		ctx = h.callbacks.OnInitCtx(ctx, req)
+	}
 
 	if h.callbacks.OnStartServing != nil {
 		h.callbacks.OnStartServing(req)
@@ -87,21 +92,15 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	req.ParseForm()
-
 	path := req.URL.Path
-	handler := h.hm.FindHandlerByRoute(path)
 
+	handler := h.hm.FindHandlerByRoute(path)
 	if handler == nil {
 		if h.callbacks.On404 != nil {
 			h.callbacks.On404(ctx, req)
 		}
 		h.writeError(ctx, w, "", http.StatusNotFound)
 		return
-	}
-
-	var resp httpSessionResponse
-	if h.callbacks.OnInitCtx != nil {
-		ctx = h.callbacks.OnInitCtx(ctx, req)
 	}
 
 	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
@@ -116,6 +115,8 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		h.writeError(ctx, w, "", http.StatusBadRequest)
 		return
 	}
+
+	var resp httpSessionResponse
 
 	var paramsGetter gorpc.IHandlerParameters
 	if jsonRequest {
@@ -173,7 +174,6 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	handlerResponse, err := h.hm.CallHandler(ctx, handler, params)
-
 	if err == nil {
 		resp.Result = "OK"
 		resp.Data = handlerResponse
@@ -210,8 +210,11 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if len(cacheEntry.Content) > 1024 && (cacheKey != nil || strings.Contains(req.Header.Get("Accept-Encoding"), "gzip")) {
-		buf := bytes.NewBuffer(cacheEntry.CompressedContent)
-		gzip.NewWriter(buf).Write(cacheEntry.Content)
+		buf := new(bytes.Buffer)
+		gzipWriter := gzip.NewWriter(buf)
+		gzipWriter.Write(cacheEntry.Content)
+		gzipWriter.Close()
+		cacheEntry.CompressedContent = buf.Bytes()
 	}
 
 	if h.cache != nil && cacheKey != nil {
