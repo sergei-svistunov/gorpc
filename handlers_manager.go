@@ -158,7 +158,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		_, deprecatedUseCache := handlerType.MethodByName(handlerMethodPrefix + "UseCache")
 		_, deprecatedUseETag := handlerType.MethodByName(handlerMethodPrefix + "UseEtag")
 		if deprecatedUseCache || deprecatedUseETag {
-			panic("UseCache and UseEtag marker methods no longer supported. Use http_json.EnableCacheInTransport(), http_json.DisableCacheInTransport(), http_json.EnableETag() and http_json.DisableETag()")
+			panic("UseCache and UseEtag marker methods no longer supported. Use cache.EnableTrasportCache(), cache.DisableTrasportCache(), cache.EnableETag() and cache.DisableETag()")
 		}
 
 		if vMethodType.Type.NumOut() != 2 {
