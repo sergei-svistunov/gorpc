@@ -22,7 +22,7 @@ type httpSessionResponse struct {
 }
 
 type APIHandlerCallbacks struct {
-	OnInitCtx             func(req *http.Request) context.Context
+	OnInitCtx             func(ctx context.Context, req *http.Request) context.Context
 	OnError               func(ctx context.Context, w http.ResponseWriter, req *http.Request, resp interface{}, err *gorpc.CallHandlerError)
 	OnPanic               func(ctx context.Context, w http.ResponseWriter, r interface{}, trace []byte, req *http.Request)
 	OnStartServing        func(req *http.Request)
@@ -70,7 +70,6 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			if h.callbacks.OnPanic != nil {
 				h.callbacks.OnPanic(ctx, w, r, trace, req)
 			}
-
 			h.writeError(ctx, w, "", http.StatusInternalServerError)
 		}
 	}()
@@ -102,7 +101,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	var resp httpSessionResponse
 	if h.callbacks.OnInitCtx != nil {
-		ctx = h.callbacks.OnInitCtx(req)
+		ctx = h.callbacks.OnInitCtx(ctx, req)
 	}
 
 	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
@@ -169,7 +168,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if cacheEntry != nil {
-		h.WriteResponse(ctx, cacheEntry, resp, w, req)
+		h.writeResponse(ctx, cacheEntry, resp, w, req, startTime)
 		return
 	}
 
@@ -219,11 +218,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		h.cache.Put(cacheKey, cacheEntry)
 	}
 
-	if h.callbacks.OnSuccess != nil {
-		h.callbacks.OnSuccess(ctx, req, resp, startTime)
-	}
-
-	h.WriteResponse(ctx, cacheEntry, resp, w, req)
+	h.writeResponse(ctx, cacheEntry, resp, w, req, startTime)
 }
 
 func (h *APIHandler) CanServe(req *http.Request) bool {
@@ -232,8 +227,8 @@ func (h *APIHandler) CanServe(req *http.Request) bool {
 	return handler != nil
 }
 
-func (h *APIHandler) WriteResponse(ctx context.Context, cacheEntry *cache.CacheEntry, resp httpSessionResponse,
-	w http.ResponseWriter, req *http.Request) {
+func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheEntry, resp httpSessionResponse,
+	w http.ResponseWriter, req *http.Request, startTime time.Time) {
 
 	if h.callbacks.OnBeforeWriteResponse != nil {
 		h.callbacks.OnBeforeWriteResponse(ctx, w)
@@ -254,6 +249,11 @@ func (h *APIHandler) WriteResponse(ctx context.Context, cacheEntry *cache.CacheE
 			Err:  err,
 		}
 		h.callbacks.OnError(ctx, w, req, resp, handlerError)
+		return
+	}
+
+	if h.callbacks.OnSuccess != nil {
+		h.callbacks.OnSuccess(ctx, req, resp, startTime)
 	}
 }
 
