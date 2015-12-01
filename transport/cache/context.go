@@ -20,7 +20,7 @@ func NewContext(parent context.Context) context.Context {
 	return context.WithValue(parent, requestInfoKey, &requestInfo{})
 }
 
-func EnableTrasportCache(ctx context.Context) {
+func EnableTransportCache(ctx context.Context) {
 	if info, ok := fromContext(ctx); ok {
 		info.UseCache = true
 	}
