@@ -17,4 +17,5 @@ type ICacheLocker interface {
 type CacheEntry struct {
 	Content           []byte
 	CompressedContent []byte
+	Hash              string
 }

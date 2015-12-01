@@ -10,7 +10,6 @@ type handlerVersion struct {
 	Request       *handlerRequest
 	Response      reflect.Type
 	Version       string
-	UseCache      bool
 	ExtraData     interface{}
 	handlerStruct IHandler
 	method        reflect.Method

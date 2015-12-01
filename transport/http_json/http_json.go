@@ -58,6 +58,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if h.callbacks.OnInitCtx != nil {
 		ctx = h.callbacks.OnInitCtx(ctx, req)
 	}
+	ctx = cache.NewContext(ctx)
 
 	if h.callbacks.OnStartServing != nil {
 		h.callbacks.OnStartServing(req)
@@ -200,7 +201,12 @@ func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSession
 		return
 	}
 
-	h.cache.Put(cacheKey, cacheEntry)
+	if cache.IsTransportCacheEnabled(ctx) {
+		if cache.IsETagEnabled(ctx) {
+			cacheEntry.Hash, _ = cache.ETagHash(cacheEntry.Content)
+		}
+		h.cache.Put(cacheKey, cacheEntry)
+	}
 	return
 }
 
@@ -216,7 +222,7 @@ func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *htt
 }
 
 func (h *APIHandler) getCacheKey(ctx context.Context, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) []byte {
-	if h.cache == nil || !handler.UseCache {
+	if h.cache == nil {
 		return nil
 	}
 
@@ -227,7 +233,6 @@ func (h *APIHandler) getCacheKey(ctx context.Context, req *http.Request, handler
 	cacheKey, err := json.Marshal(params.Interface())
 	if err != nil {
 		// TODO: call callback.onError?
-		// log.Print(err.Error())
 		cacheKey = nil
 	}
 	return cacheKey
@@ -259,6 +264,17 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 
 	if h.callbacks.OnBeforeWriteResponse != nil {
 		h.callbacks.OnBeforeWriteResponse(ctx, w)
+	}
+
+	if cacheEntry.Hash != "" {
+		w.Header().Set("Etag", cacheEntry.Hash)
+		if cacheEntry.Hash == req.Header.Get("If-None-Match") {
+			w.WriteHeader(http.StatusNotModified)
+			if h.callbacks.OnSuccess != nil {
+				h.callbacks.OnSuccess(ctx, req, resp, startTime)
+			}
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

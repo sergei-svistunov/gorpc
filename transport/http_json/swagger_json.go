@@ -10,16 +10,17 @@ import (
 )
 
 type Swagger struct {
-	SpecVersion string              `json:"swagger"`
-	Info        Info                `json:"info"`
-	BasePath    string              `json:"basePath"`
-	Port        uint16              `json:"port,omitempty"`
-	Schemes     []string            `json:"schemes,omitempty"`
-	Consumes    []string            `json:"consumes,omitempty"`
-	Produces    []string            `json:"produces,omitempty"`
-	Paths       map[string]PathItem `json:"paths"`
-	Tags        []Tag               `json:"tags,omitempty"`
-	Definitions Definitions         `json:"definitions,omitempty"`
+	SpecVersion         string              `json:"swagger"`
+	Info                Info                `json:"info"`
+	BasePath            string              `json:"basePath"`
+	Port                uint16              `json:"port,omitempty"`
+	Schemes             []string            `json:"schemes,omitempty"`
+	Consumes            []string            `json:"consumes,omitempty"`
+	Produces            []string            `json:"produces,omitempty"`
+	Paths               map[string]PathItem `json:"paths"`
+	Tags                []Tag               `json:"tags,omitempty"`
+	Definitions         Definitions         `json:"definitions,omitempty"`
+	SecurityDefinitions SecurityDefinitions `json:"securityDefinitions,omitempty"`
 }
 
 type Info struct {
@@ -28,17 +29,18 @@ type Info struct {
 	Description string `json:"description"`
 }
 
-type PathItem map[string]Operation
+type PathItem map[string]*Operation
 
 type Operation struct {
-	Tags        []string    `json:"tags,omitempty"`
-	Summary     string      `json:"summary"`
-	Description string      `json:"description"`
-	Consumes    []string    `json:"consumes,omitempty"`
-	Produces    []string    `json:"produces,omitempty"`
-	Parameters  []Parameter `json:"parameters,omitempty"`
-	Responses   Responses   `json:"responses,omitempty"`
-	ExtraData   interface{} `json:"-"`
+	Tags        []string               `json:"tags,omitempty"`
+	Summary     string                 `json:"summary"`
+	Description string                 `json:"description"`
+	Consumes    []string               `json:"consumes,omitempty"`
+	Produces    []string               `json:"produces,omitempty"`
+	Parameters  []*Parameter           `json:"parameters,omitempty"`
+	Responses   Responses              `json:"responses,omitempty"`
+	Security    []*SecurityRequirement `json:"security,omitempty"`
+	ExtraData   interface{}            `json:"-"`
 }
 
 type Parameter struct {
@@ -61,26 +63,40 @@ type Items struct {
 	Schema
 }
 
-type Responses map[string]Response
+type Responses map[string]*Response
 
 type Response struct {
-	Description string `json:"description"`
-	Schema      Schema `json:"schema"`
+	Description string  `json:"description"`
+	Schema      *Schema `json:"schema"`
 }
 
 type Schema struct {
-	Ref                  string      `json:"$ref,omitempty"`
-	Type                 string      `json:"type,omitempty"`
-	Description          string      `json:"description,omitempty"`
-	Required             []string    `json:"required,omitempty"`
-	Items                interface{} `json:"items,omitempty"`
-	Properties           Properties  `json:"properties,omitempty"`
-	AdditionalProperties *Schema     `json:"additionalProperties,omitempty"`
+	Ref                  string     `json:"$ref,omitempty"`
+	Type                 string     `json:"type,omitempty"`
+	Description          string     `json:"description,omitempty"`
+	Required             []string   `json:"required,omitempty"`
+	Items                *Items     `json:"items,omitempty"`
+	Properties           Properties `json:"properties,omitempty"`
+	AdditionalProperties *Schema    `json:"additionalProperties,omitempty"`
 }
 
-type Properties map[string]Schema
+type Properties map[string]*Schema
 
 type Definitions map[string]interface{}
+
+// SecurityRequirement security requirement
+type SecurityRequirement map[string][]string
+
+// SecurityDefinitions security definitions
+type SecurityDefinitions map[string]*SecurityScheme
+
+// SecurityScheme security scheme
+type SecurityScheme struct {
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+	Name        string `json:"name"`
+	In          string `json:"in"`
+}
 
 // SwaggerJSONCallbacks is struct for callbacks describing
 type SwaggerJSONCallbacks struct {
@@ -107,9 +123,10 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 				<li><strong>error: </strong>error code, it is an empty string if <code>result</code> is <code>OK</code></li>
 			  </ul>
 			</p>
-			<h3>Response compression</h3>
-			<p>API compress a respone using gzip if the header "Accept-Encoding" contains "gzip" and a response is bigger or equal 1Kb.
-			If a response is compressed then server sends the header "Content-Encoding: gzip".</p>`,
+			<h3>Response compression and caching</h3>
+			<p>API compress a response using gzip if the header "Accept-Encoding" contains "gzip" and a response is bigger or equal 1Kb.
+			If a response is compressed then server sends the header "Content-Encoding: gzip".</p>
+			<p>API supports ETag.</p>`,
 		},
 		BasePath:    "/",
 		Port:        apiPort,
@@ -129,7 +146,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 		swagger.Tags = append(swagger.Tags, Tag{Name: tagName})
 
 		for _, v := range info.Versions {
-			operation := Operation{
+			operation := &Operation{
 				Summary:     info.Caption,
 				Description: info.Description,
 				Produces:    []string{"application/json"},
@@ -137,18 +154,14 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 				ExtraData:   v.ExtraData,
 			}
 
-			if v.UseCache {
-				operation.Description += ".<br/>Handler caches response."
-			}
-
 			if !v.Request.Flat {
 				bodySchema := getOrCreateSchema(swagger.Definitions, v.Request.Type)
-				param := Parameter{
+				param := &Parameter{
 					Name:        "body",
 					Description: "Body",
 					In:          "body",
 					Required:    true,
-					BodySchema:  &bodySchema,
+					BodySchema:  bodySchema,
 				}
 				operation.Consumes = []string{"application/json"}
 				operation.Parameters = append(operation.Parameters, param)
@@ -161,7 +174,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 						arrayType = typeName(p.RawType.Elem())
 					}
 
-					param := Parameter{
+					param := &Parameter{
 						Name:        p.GetKey(),
 						Description: p.Description,
 						In:          "query",
@@ -170,7 +183,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 					}
 					if arrayType != "" {
 						param.CollectionFormat = "multi"
-						param.Items = Items{Schema{Type: arrayType}}
+						param.Items = &Items{Schema{Type: arrayType}}
 					}
 					operation.Parameters = append(operation.Parameters, param)
 				}
@@ -194,7 +207,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 
 			if v.Response != nil {
 				operation.Responses = Responses{
-					"200": Response{
+					"200": &Response{
 						Description: "Successful result",
 						Schema:      getOrCreateSchema(swagger.Definitions, v.Response),
 					},
@@ -202,7 +215,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 			}
 
 			if callbacks.OnPrepareHandlerJSON != nil {
-				callbacks.OnPrepareHandlerJSON(path, &operation)
+				callbacks.OnPrepareHandlerJSON(path, operation)
 			}
 
 			var method string
@@ -248,7 +261,7 @@ func typeName(t reflect.Type) (name string) {
 	return
 }
 
-func getOrCreateSchema(definitions Definitions, t reflect.Type) Schema {
+func getOrCreateSchema(definitions Definitions, t reflect.Type) *Schema {
 	var result Schema
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -259,14 +272,13 @@ func getOrCreateSchema(definitions Definitions, t reflect.Type) Schema {
 			panic("swagger supports only maps with string keys")
 		}
 		result.Type = "object"
-		additionalProperties := getOrCreateSchema(definitions, t.Elem())
-		result.AdditionalProperties = &additionalProperties
-		return result
+		result.AdditionalProperties = getOrCreateSchema(definitions, t.Elem())
+		return &result
 	}
 
 	if t.Kind() == reflect.Interface {
 		result.Type = "object"
-		return result
+		return &result
 	}
 
 	result.Type = typeName(t)
@@ -274,7 +286,7 @@ func getOrCreateSchema(definitions Definitions, t reflect.Type) Schema {
 		name := t.String()
 		if _, ok := definitions[name]; ok {
 			result = Schema{Ref: "#/definitions/" + name}
-			return result
+			return &result
 		}
 		definitions[name] = result
 
@@ -301,8 +313,8 @@ func getOrCreateSchema(definitions Definitions, t reflect.Type) Schema {
 		result = Schema{Ref: "#/definitions/" + name}
 	} else if result.Type == "array" {
 		itemsSchema := getOrCreateSchema(definitions, t.Elem())
-		result.Items = Items{itemsSchema}
+		result.Items = &Items{*itemsSchema}
 	}
 
-	return result
+	return &result
 }

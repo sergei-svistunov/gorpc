@@ -55,7 +55,6 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 	hv2 := s.hm.FindHandler("/test/handler1", 2)
 
 	s.Equal("v1", hv1.Version)
-	s.True(hv1.UseCache)
 	s.Equal([]HandlerParameter{
 		HandlerParameter{
 			Name:        "ReqInt",
@@ -78,7 +77,6 @@ func (s *HandlersManagerSuite) TestHandlerManager_CheckHandler1Struct() {
 	}, hv1.Request.Fields)
 
 	s.Equal("v2", hv2.Version)
-	s.False(hv2.UseCache)
 	s.Equal([]HandlerError{
 		HandlerError{
 			UserMessage: "Error 1 description",

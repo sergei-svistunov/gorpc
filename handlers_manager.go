@@ -157,7 +157,11 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 
 		hm.handlerVersions[version.Route] = version
 
-		_, version.UseCache = handlerType.MethodByName(handlerMethodPrefix + "UseCache")
+		_, deprecatedUseCache := handlerType.MethodByName(handlerMethodPrefix + "UseCache")
+		_, deprecatedUseETag := handlerType.MethodByName(handlerMethodPrefix + "UseEtag")
+		if deprecatedUseCache || deprecatedUseETag {
+			panic("UseCache and UseEtag marker methods no longer supported. Use cache.EnableTrasportCache(), cache.DisableTrasportCache(), cache.EnableETag() and cache.DisableETag()")
+		}
 
 		if vMethodType.Type.NumOut() != 2 {
 			return fmt.Errorf("Invalid count of output parameters for version number %d of handler %s", handlerVersion, handlerPath)
