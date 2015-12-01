@@ -123,11 +123,10 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 				<li><strong>error: </strong>error code, it is an empty string if <code>result</code> is <code>OK</code></li>
 			  </ul>
 			</p>
-			<h3>Response compression</h3>
+			<h3>Response compression and caching</h3>
 			<p>API compress a response using gzip if the header "Accept-Encoding" contains "gzip" and a response is bigger or equal 1Kb.
 			If a response is compressed then server sends the header "Content-Encoding: gzip".</p>
-			<h3>Transport cache</h3>
-			<p>API can cache response of handlers and provides ETag support with 304 header.</p>`,
+			<p>API caches response of handlers and supports ETag with 304 response code.</p>`,
 		},
 		BasePath:    "/",
 		Port:        apiPort,
