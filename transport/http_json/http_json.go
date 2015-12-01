@@ -230,12 +230,14 @@ func (h *APIHandler) getCacheKey(ctx context.Context, req *http.Request, handler
 		return h.callbacks.GetCacheKey(ctx, req, params.Interface())
 	}
 
-	cacheKey, err := json.Marshal(params.Interface())
+	buf := bytes.NewBufferString(handler.Route)
+	encoder := json.NewEncoder(buf)
+	err := encoder.Encode(params.Interface())
 	if err != nil {
 		// TODO: call callback.onError?
-		cacheKey = nil
+		return nil
 	}
-	return cacheKey
+	return buf.Bytes()
 }
 
 func (h *APIHandler) createCacheEntry(ctx context.Context, resp *httpSessionResponse, cacheKey []byte, req *http.Request) (*cache.CacheEntry, *gorpc.CallHandlerError) {
