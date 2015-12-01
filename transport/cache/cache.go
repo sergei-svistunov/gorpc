@@ -5,6 +5,13 @@ type ICache interface {
 	Get(key []byte) *CacheEntry
 	// Put puts response in cache
 	Put(key []byte, entry *CacheEntry)
+
+	ICacheLocker
+}
+
+type ICacheLocker interface {
+	Lock(key []byte)
+	Unlock(key []byte)
 }
 
 type CacheEntry struct {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"runtime"
 	"strings"
 	"time"
@@ -22,7 +23,7 @@ type httpSessionResponse struct {
 }
 
 type APIHandlerCallbacks struct {
-	OnInitCtx             func(req *http.Request) context.Context
+	OnInitCtx             func(ctx context.Context, req *http.Request) context.Context
 	OnError               func(ctx context.Context, w http.ResponseWriter, req *http.Request, resp interface{}, err *gorpc.CallHandlerError)
 	OnPanic               func(ctx context.Context, w http.ResponseWriter, r interface{}, trace []byte, req *http.Request)
 	OnStartServing        func(req *http.Request)
@@ -51,7 +52,13 @@ func NewAPIHandler(hm *gorpc.HandlersManager, cache cache.ICache, callbacks APIH
 
 func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	startTime := time.Now()
+
+	// TODO: create context with reasonable timeout
 	ctx := context.Background()
+	if h.callbacks.OnInitCtx != nil {
+		ctx = h.callbacks.OnInitCtx(ctx, req)
+	}
+	ctx = cache.NewContext(ctx)
 
 	if h.callbacks.OnStartServing != nil {
 		h.callbacks.OnStartServing(req)
@@ -70,7 +77,6 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			if h.callbacks.OnPanic != nil {
 				h.callbacks.OnPanic(ctx, w, r, trace, req)
 			}
-
 			h.writeError(ctx, w, "", http.StatusInternalServerError)
 		}
 	}()
@@ -87,11 +93,16 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	req.ParseForm()
+	var resp httpSessionResponse
 
-	path := req.URL.Path
-	handler := h.hm.FindHandlerByRoute(path)
-
+	handler, params, err := h.parseRequest(ctx, req)
+	if err != nil {
+		if h.callbacks.OnError != nil {
+			h.callbacks.OnError(ctx, w, req, resp, err)
+		}
+		h.writeError(ctx, w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if handler == nil {
 		if h.callbacks.On404 != nil {
 			h.callbacks.On404(ctx, req)
@@ -100,81 +111,10 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var resp httpSessionResponse
-	if h.callbacks.OnInitCtx != nil {
-		ctx = h.callbacks.OnInitCtx(req)
-	}
-	ctx = cache.NewContext(ctx)
-
-	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
-	if jsonRequest && req.Method != "POST" {
+	cacheEntry, err := h.callHandlerWithCache(ctx, &resp, req, handler, params)
+	if err != nil {
 		if h.callbacks.OnError != nil {
-			err := &gorpc.CallHandlerError{
-				Type: gorpc.ErrorInvalidMethod,
-				Err:  errors.New(http.StatusText(http.StatusBadRequest)),
-			}
 			h.callbacks.OnError(ctx, w, req, nil, err)
-		}
-		h.writeError(ctx, w, "", http.StatusBadRequest)
-		return
-	}
-
-	var paramsGetter gorpc.IHandlerParameters
-	if jsonRequest {
-		paramsGetter = &JsonParametersGetter{Req: req.Body}
-	} else {
-		paramsGetter = &ParametersGetter{Req: req}
-	}
-	params, paramsErr := h.hm.UnmarshalParameters(ctx, handler, paramsGetter)
-	if paramsErr != nil {
-		if h.callbacks.OnError != nil {
-			grpcErr := &gorpc.CallHandlerError{
-				Type: gorpc.ErrorInParameters,
-				Err:  paramsErr,
-			}
-			h.callbacks.OnError(ctx, w, req, resp, grpcErr)
-		}
-		h.writeError(ctx, w, paramsErr.Error(), http.StatusBadRequest)
-		return
-	}
-
-	var cacheKey []byte
-	var cacheEntry *cache.CacheEntry
-	if h.cache != nil {
-		if h.callbacks.GetCacheKey != nil {
-			cacheKey = h.callbacks.GetCacheKey(ctx, req, params.Interface())
-		} else {
-			var err error
-			cacheKey, err = json.Marshal(params.Interface())
-			if err != nil {
-				// TODO: call callback.onError?
-				cacheKey = nil
-			}
-		}
-		if cacheKey != nil {
-			cacheEntry = h.cache.Get(cacheKey)
-			if cacheEntry != nil {
-				if h.callbacks.OnCacheHit != nil {
-					h.callbacks.OnCacheHit(ctx, cacheEntry)
-				}
-				h.writeResponse(ctx, startTime, cacheEntry, resp, w, req)
-				return
-			}
-
-			if h.callbacks.OnCacheMiss != nil {
-				h.callbacks.OnCacheMiss(ctx)
-			}
-		}
-	}
-
-	handlerResponse, err := h.hm.CallHandler(ctx, handler, params)
-
-	if err == nil {
-		resp.Result = "OK"
-		resp.Data = handlerResponse
-	} else {
-		if h.callbacks.OnError != nil {
-			h.callbacks.OnError(ctx, w, req, resp, err)
 		}
 		switch err.Type {
 		case gorpc.ErrorReturnedFromCall:
@@ -189,34 +129,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-
-	cacheEntry = &cache.CacheEntry{}
-	var jerr error
-	cacheEntry.Content, jerr = json.Marshal(resp)
-	if jerr != nil {
-		if h.callbacks.OnError != nil {
-			handlerError := &gorpc.CallHandlerError{
-				Type: gorpc.ErrorWriteResponse,
-				Err:  jerr,
-			}
-			h.callbacks.OnError(ctx, w, req, resp, handlerError)
-		}
-		h.writeError(ctx, w, "", http.StatusInternalServerError)
-		return
-	}
-	if len(cacheEntry.Content) > 1024 && (cacheKey != nil || strings.Contains(req.Header.Get("Accept-Encoding"), "gzip")) {
-		buf := bytes.NewBuffer(cacheEntry.CompressedContent)
-		gzip.NewWriter(buf).Write(cacheEntry.Content)
-	}
-
-	if cache.IsTransportCacheEnabled(ctx) && h.cache != nil && cacheKey != nil {
-		if cache.IsETagEnabled(ctx) {
-			cacheEntry.Hash, _ = cache.ETagHash(cacheEntry.Content)
-		}
-		h.cache.Put(cacheKey, cacheEntry)
-	}
-
-	h.writeResponse(ctx, startTime, cacheEntry, resp, w, req)
+	h.writeResponse(ctx, cacheEntry, &resp, w, req, startTime)
 }
 
 func (h *APIHandler) CanServe(req *http.Request) bool {
@@ -225,12 +138,129 @@ func (h *APIHandler) CanServe(req *http.Request) bool {
 	return handler != nil
 }
 
-func (h *APIHandler) writeResponse(ctx context.Context, startTime time.Time, cacheEntry *cache.CacheEntry, resp httpSessionResponse,
-	w http.ResponseWriter, req *http.Request) {
-
-	if h.callbacks.OnSuccess != nil {
-		h.callbacks.OnSuccess(ctx, req, resp, startTime)
+func (h *APIHandler) parseRequest(ctx context.Context, req *http.Request) (gorpc.HandlerVersion, reflect.Value, *gorpc.CallHandlerError) {
+	if err := req.ParseForm(); err != nil {
+		return nil, reflect.ValueOf(nil), &gorpc.CallHandlerError{
+			Type: gorpc.ErrorInParameters,
+			Err:  err,
+		}
 	}
+
+	handler := h.hm.FindHandlerByRoute(req.URL.Path)
+	if handler == nil {
+		return nil, reflect.ValueOf(nil), nil
+	}
+
+	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
+	if jsonRequest && req.Method != "POST" {
+		return nil, reflect.ValueOf(nil), &gorpc.CallHandlerError{
+			Type: gorpc.ErrorInvalidMethod,
+			Err:  errors.New(http.StatusText(http.StatusBadRequest)),
+		}
+	}
+
+	var paramsGetter gorpc.IHandlerParameters
+	if jsonRequest {
+		paramsGetter = &JsonParametersGetter{Req: req.Body}
+	} else {
+		paramsGetter = &ParametersGetter{Req: req}
+	}
+
+	params, err := h.hm.UnmarshalParameters(ctx, handler, paramsGetter)
+	if err != nil {
+		return nil, reflect.ValueOf(nil), &gorpc.CallHandlerError{
+			Type: gorpc.ErrorInParameters,
+			Err:  err,
+		}
+	}
+	return handler, params, nil
+}
+
+func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (cacheEntry *cache.CacheEntry, err *gorpc.CallHandlerError) {
+	cacheKey := h.getCacheKey(ctx, req, handler, params)
+	if cacheKey == nil {
+		return h.callHandler(ctx, cacheKey, resp, req, handler, params)
+	}
+
+	h.cache.Lock(cacheKey)
+	defer h.cache.Unlock(cacheKey)
+	cacheEntry = h.cache.Get(cacheKey)
+	if cacheEntry != nil {
+		if h.callbacks.OnCacheHit != nil {
+			h.callbacks.OnCacheHit(ctx, cacheEntry)
+		}
+
+		return
+	}
+	if h.callbacks.OnCacheMiss != nil {
+		h.callbacks.OnCacheMiss(ctx)
+	}
+
+	cacheEntry, err = h.callHandler(ctx, cacheKey, resp, req, handler, params)
+	if err != nil {
+		return
+	}
+
+	if cache.IsTransportCacheEnabled(ctx) {
+		if cache.IsETagEnabled(ctx) {
+			cacheEntry.Hash, _ = cache.ETagHash(cacheEntry.Content)
+		}
+		h.cache.Put(cacheKey, cacheEntry)
+	}
+	return
+}
+
+func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *httpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (*cache.CacheEntry, *gorpc.CallHandlerError) {
+	handlerResponse, err := h.hm.CallHandler(ctx, handler, params)
+	if err != nil {
+		return nil, err
+	}
+
+	resp.Result = "OK"
+	resp.Data = handlerResponse
+	return h.createCacheEntry(ctx, resp, cacheKey, req)
+}
+
+func (h *APIHandler) getCacheKey(ctx context.Context, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) []byte {
+	if h.cache == nil {
+		return nil
+	}
+
+	if h.callbacks.GetCacheKey != nil {
+		return h.callbacks.GetCacheKey(ctx, req, params.Interface())
+	}
+
+	cacheKey, err := json.Marshal(params.Interface())
+	if err != nil {
+		// TODO: call callback.onError?
+		cacheKey = nil
+	}
+	return cacheKey
+}
+
+func (h *APIHandler) createCacheEntry(ctx context.Context, resp *httpSessionResponse, cacheKey []byte, req *http.Request) (*cache.CacheEntry, *gorpc.CallHandlerError) {
+	content, err := json.Marshal(resp)
+	if err != nil {
+		return nil, &gorpc.CallHandlerError{
+			Type: gorpc.ErrorWriteResponse,
+			Err:  err,
+		}
+	}
+	cacheEntry := cache.CacheEntry{
+		Content: content,
+	}
+	if len(content) > 1024 && (cacheKey != nil || strings.Contains(req.Header.Get("Accept-Encoding"), "gzip")) {
+		buf := new(bytes.Buffer)
+		gzipWriter := gzip.NewWriter(buf)
+		gzipWriter.Write(content)
+		gzipWriter.Close()
+		cacheEntry.CompressedContent = buf.Bytes()
+	}
+	return &cacheEntry, nil
+}
+
+func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheEntry, resp *httpSessionResponse,
+	w http.ResponseWriter, req *http.Request, startTime time.Time) {
 
 	if h.callbacks.OnBeforeWriteResponse != nil {
 		h.callbacks.OnBeforeWriteResponse(ctx, w)
@@ -239,13 +269,10 @@ func (h *APIHandler) writeResponse(ctx context.Context, startTime time.Time, cac
 	if cacheEntry.Hash != "" {
 		w.Header().Set("Etag", cacheEntry.Hash)
 		if cacheEntry.Hash == req.Header.Get("If-None-Match") {
+			w.WriteHeader(http.StatusNotModified)
 			if h.callbacks.OnSuccess != nil {
 				h.callbacks.OnSuccess(ctx, req, resp, startTime)
 			}
-			if h.callbacks.OnBeforeWriteResponse != nil {
-				h.callbacks.OnBeforeWriteResponse(ctx, w)
-			}
-			w.WriteHeader(http.StatusNotModified)
 			return
 		}
 	}
@@ -265,6 +292,11 @@ func (h *APIHandler) writeResponse(ctx context.Context, startTime time.Time, cac
 			Err:  err,
 		}
 		h.callbacks.OnError(ctx, w, req, resp, handlerError)
+		return
+	}
+
+	if h.callbacks.OnSuccess != nil {
+		h.callbacks.OnSuccess(ctx, req, resp, startTime)
 	}
 }
 

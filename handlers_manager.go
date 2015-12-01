@@ -15,6 +15,8 @@ import (
 
 var isSamePackagePathException = map[string]bool{"time": true}
 
+type HandlerVersion *handlerVersion
+
 type handlerEntity struct {
 	path          string
 	versions      []handlerVersion
@@ -384,7 +386,7 @@ func copyEncounteredMap(m map[reflect.Type][]HandlerParameter) map[reflect.Type]
 
 // FindHandler returns a handler by given non-versioned path and given version
 // number
-func (hm *HandlersManager) FindHandler(path string, version int) *handlerVersion {
+func (hm *HandlersManager) FindHandler(path string, version int) HandlerVersion {
 	handler := hm.getHandlerByPath(path)
 	if handler == nil {
 		return nil
@@ -399,14 +401,14 @@ func (hm *HandlersManager) FindHandler(path string, version int) *handlerVersion
 
 // FindHandlerByRoute returns a handler by fully qualified route to that
 // particular version of the handler
-func (hm *HandlersManager) FindHandlerByRoute(route string) *handlerVersion {
+func (hm *HandlersManager) FindHandlerByRoute(route string) HandlerVersion {
 	if !strings.HasSuffix(route, "/") {
 		route += "/"
 	}
 	return hm.handlerVersions[route]
 }
 
-func (*HandlersManager) UnmarshalParameters(ctx context.Context, handler *handlerVersion,
+func (*HandlersManager) UnmarshalParameters(ctx context.Context, handler HandlerVersion,
 	handlerParameters IHandlerParameters) (reflect.Value, error) {
 	return unmarshalRequest(handler.Request, handlerParameters)
 }
@@ -424,7 +426,7 @@ func unmarshalRequest(request *handlerRequest, handlerParameters IHandlerParamet
 	return resPtr, nil
 }
 
-func (hm *HandlersManager) CallHandler(ctx context.Context, handler *handlerVersion, params reflect.Value) (interface{}, *CallHandlerError) {
+func (hm *HandlersManager) CallHandler(ctx context.Context, handler HandlerVersion, params reflect.Value) (interface{}, *CallHandlerError) {
 	in := []reflect.Value{reflect.ValueOf(handler.handlerStruct), reflect.ValueOf(ctx), params}
 
 	if callback := hm.callbacks.AppendInParams; callback != nil {
