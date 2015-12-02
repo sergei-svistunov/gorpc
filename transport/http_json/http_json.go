@@ -117,17 +117,12 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			h.callbacks.OnError(ctx, w, req, nil, err)
 		}
 		switch err.Type {
-		case gorpc.ErrorReturnedFromCall:
-			resp.Result = "ERROR"
-			resp.Data = err.UserMessage()
-			resp.Error = err.ErrorCode()
 		case gorpc.ErrorInParameters:
 			h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
-			return
 		default:
 			h.writeError(ctx, w, "", http.StatusInternalServerError)
-			return
 		}
+		return
 	}
 	h.writeResponse(ctx, cacheEntry, &resp, w, req, startTime)
 }
@@ -213,6 +208,12 @@ func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSession
 func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *httpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (*cache.CacheEntry, *gorpc.CallHandlerError) {
 	handlerResponse, err := h.hm.CallHandler(ctx, handler, params)
 	if err != nil {
+		if err.Type == gorpc.ErrorReturnedFromCall {
+			resp.Result = "ERROR"
+			resp.Data = err.UserMessage()
+			resp.Error = err.ErrorCode()
+			return h.createCacheEntry(ctx, resp, nil, req)
+		}
 		return nil, err
 	}
 
