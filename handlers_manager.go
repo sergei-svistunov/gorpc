@@ -240,8 +240,16 @@ func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type
 	encountered[basicType] = true
 	pkgPath := basicType.PkgPath()
 
-	if basicType.Kind() == reflect.Slice {
+	if basicType.Kind() == reflect.Slice || basicType.Kind() == reflect.Array {
 		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
+	} else if basicType.Kind() == reflect.Map {
+		if err := checkStructureIsInTheSamePackage(packagePath, basicType.Key(), encountered); err != nil {
+			return err
+		}
+		if err := checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered); err != nil {
+			return err
+		}
+		return nil
 	} else if basicType.Kind() == reflect.Ptr {
 		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
 	} else if len(pkgPath) == 0 || isPrimitiveType(basicType) {
