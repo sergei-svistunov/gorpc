@@ -13,13 +13,15 @@ import (
 
 	"github.com/sergei-svistunov/gorpc"
 	"github.com/sergei-svistunov/gorpc/transport/cache"
+	"github.com/sergei-svistunov/gorpc/transport/http_json/debug"
 	"golang.org/x/net/context"
 )
 
 type httpSessionResponse struct {
-	Result string      `json:"result"`
-	Data   interface{} `json:"data"`
-	Error  string      `json:"error"`
+	Result string       `json:"result"`
+	Data   interface{}  `json:"data"`
+	Error  string       `json:"error"`
+	Debug  *debug.Debug `json:"debug"`
 }
 
 type APIHandlerCallbacks struct {
@@ -206,6 +208,9 @@ func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSession
 }
 
 func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *httpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (*cache.CacheEntry, *gorpc.CallHandlerError) {
+	if h.IsDebug(req) {
+		ctx = context.WithValue(ctx, debug.DebugContextKey, debug.NewDebug())
+	}
 	handlerResponse, err := h.hm.CallHandler(ctx, handler, params)
 	if err != nil {
 		if err.Type == gorpc.ErrorReturnedFromCall {
@@ -219,6 +224,9 @@ func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *htt
 
 	resp.Result = "OK"
 	resp.Data = handlerResponse
+	if debug, ok := h.GetDebugFromContext(ctx); ok {
+		resp.Debug = debug
+	}
 	return h.createCacheEntry(ctx, resp, cacheKey, req)
 }
 
@@ -312,4 +320,23 @@ func (h *APIHandler) writeError(ctx context.Context, w http.ResponseWriter, erro
 		error = http.StatusText(code)
 	}
 	http.Error(w, error, code)
+}
+
+func (h *APIHandler) IsDebug(req *http.Request) bool {
+	return req.FormValue("debug") == "true"
+}
+
+func (h *APIHandler) GetDebugFromContext(ctx context.Context) (*debug.Debug, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	ctxValue := ctx.Value(debug.DebugContextKey)
+	if ctxValue == nil {
+		return nil, false
+	}
+	debugData, ok := ctxValue.(*debug.Debug)
+	if !ok {
+		return nil, false
+	}
+	return debugData, true
 }
