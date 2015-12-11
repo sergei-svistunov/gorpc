@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/sergei-svistunov/gorpc"
+	"github.com/sergei-svistunov/gorpc/debug"
 	"github.com/sergei-svistunov/gorpc/transport/cache"
-	"github.com/sergei-svistunov/gorpc/transport/http_json/debug"
 	"golang.org/x/net/context"
 )
 
@@ -224,8 +224,8 @@ func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *htt
 
 	resp.Result = "OK"
 	resp.Data = handlerResponse
-	if debug, ok := h.GetDebugFromContext(ctx); ok {
-		resp.Debug = debug
+	if debugObj, ok := debug.GetDebugFromContext(ctx); ok {
+		resp.Debug = debugObj
 	}
 	return h.createCacheEntry(ctx, resp, cacheKey, req)
 }
@@ -324,19 +324,4 @@ func (h *APIHandler) writeError(ctx context.Context, w http.ResponseWriter, erro
 
 func (h *APIHandler) IsDebug(req *http.Request) bool {
 	return req.FormValue("debug") == "true"
-}
-
-func (h *APIHandler) GetDebugFromContext(ctx context.Context) (*debug.Debug, bool) {
-	if ctx == nil {
-		return nil, false
-	}
-	ctxValue := ctx.Value(debug.DebugContextKey)
-	if ctxValue == nil {
-		return nil, false
-	}
-	debugData, ok := ctxValue.(*debug.Debug)
-	if !ok {
-		return nil, false
-	}
-	return debugData, true
 }
