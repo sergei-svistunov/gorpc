@@ -29,9 +29,21 @@ func GetDebugFromContext(ctx context.Context) (*Debug, bool) {
 	if ctxValue == nil {
 		return nil, false
 	}
-	debugData, ok := ctxValue.(*Debug)
-	if !ok {
-		return nil, false
+	if debugData, ok := ctxValue.(*Debug); ok {
+		return debugData, true
 	}
-	return debugData, true
+	return nil, false
+}
+
+func Add(ctx context.Context, name string, data interface{}) bool {
+	if debug, isEnable := GetDebugFromContext(ctx); isEnable {
+		debug.Append(name, data)
+		return true
+	}
+	return false
+}
+
+func IsOn(ctx context.Context) bool {
+	_, isEnable := GetDebugFromContext(ctx)
+	return isEnable
 }

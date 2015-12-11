@@ -21,7 +21,7 @@ type httpSessionResponse struct {
 	Result string       `json:"result"`
 	Data   interface{}  `json:"data"`
 	Error  string       `json:"error"`
-	Debug  *debug.Debug `json:"debug"`
+	Debug  *debug.Debug `json:"debug,omitempty"`
 }
 
 type APIHandlerCallbacks struct {
