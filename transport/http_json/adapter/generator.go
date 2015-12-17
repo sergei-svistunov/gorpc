@@ -2,15 +2,16 @@ package adapter
 
 import (
 	"bytes"
+	"fmt"
 	"go/format"
+	"io"
 	"log"
 	"reflect"
 	"regexp"
 	"strings"
+	"unicode"
 
-	"fmt"
 	"github.com/sergei-svistunov/gorpc"
-	"io"
 )
 
 type HttpJsonLibGenerator struct {
@@ -47,7 +48,7 @@ func (g *HttpJsonLibGenerator) Generate() ([]byte, error) {
 		return nil, err
 	}
 
-	result := regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(mainTemplate, []byte(g.getAPIName()))
+	result := regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(mainTemplate, []byte(GetAPIName(g.serviceName)))
 	result = regexp.MustCompilePOSIX(">>>PKG_NAME<<<").ReplaceAll(result, []byte(g.pkgName))
 	result = regexp.MustCompilePOSIX(">>>CLIENT_API<<<").ReplaceAll(result, clientAPI)
 	result = regexp.MustCompilePOSIX(">>>IMPORTS<<<").ReplaceAll(result, g.collectImports())
@@ -55,12 +56,27 @@ func (g *HttpJsonLibGenerator) Generate() ([]byte, error) {
 	return format.Source(result)
 }
 
-func (g *HttpJsonLibGenerator) getAPIName() string {
-	name := strings.Title(g.serviceName)
-	name = strings.Replace(name, "/", "", -1)
-	name = strings.Replace(name, ".", "", -1)
-	name = strings.Replace(name, " ", "", -1)
-	return name
+// GetAPIName returns titled service name (first uppercase letter)
+// and all occurences of '/._-\s' removed and next to them character uppercased.
+func GetAPIName(serviceName string) string {
+	if serviceName == "" {
+		return ""
+	}
+	specials := []byte(`/._- `)
+	var buf bytes.Buffer
+	buf.WriteRune(unicode.ToUpper(rune(serviceName[0])))
+	for i := 1; i < len(serviceName); i++ {
+		r := rune(serviceName[i])
+		if bytes.IndexRune(specials, r) != -1 {
+			if i == len(serviceName) - 1 {
+				break
+			}
+			i++
+			r = unicode.ToUpper(rune(serviceName[i]))
+		}
+		buf.WriteRune(r)
+	}
+	return buf.String()
 }
 
 func (g *HttpJsonLibGenerator) generateAPI() ([]byte, error) {
@@ -84,7 +100,7 @@ func (g *HttpJsonLibGenerator) generateAPI() ([]byte, error) {
 			method = regexp.MustCompilePOSIX(">>>INPUT_TYPE<<<").ReplaceAll(method, []byte(inTypeName))
 			method = regexp.MustCompilePOSIX(">>>RETURNED_TYPE<<<").ReplaceAll(method, []byte(outTypeName))
 			method = regexp.MustCompilePOSIX(">>>HANDLER_ERRORS<<<").ReplaceAll(method, []byte(errVarName))
-			method = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(method, []byte(g.getAPIName()))
+			method = regexp.MustCompilePOSIX(">>>API_NAME<<<").ReplaceAll(method, []byte(GetAPIName(g.serviceName)))
 
 			result.Write(method)
 		}
