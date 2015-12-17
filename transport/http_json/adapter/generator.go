@@ -68,7 +68,7 @@ func GetAPIName(serviceName string) string {
 	for i := 1; i < len(serviceName); i++ {
 		r := rune(serviceName[i])
 		if bytes.IndexRune(specials, r) != -1 {
-			if i == len(serviceName) - 1 {
+			if i == len(serviceName)-1 {
 				break
 			}
 			i++
