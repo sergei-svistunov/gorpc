@@ -23,7 +23,7 @@ func (s *SwaggerJSONSute) SetupTest() {
 	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{})
 	s.NoError(hm.RegisterHandler(test_handler1.NewHandler()))
 
-	s.server = httptest.NewUnstartedServer(NewSwaggerJSONHandler(hm, 0, SwaggerJSONCallbacks{}))
+	s.server = httptest.NewUnstartedServer(NewSwaggerJSONHandler(hm, "", 0, SwaggerJSONCallbacks{}))
 }
 
 func TestRunSwaggerJSONSute(t *testing.T) {

@@ -106,7 +106,7 @@ type SwaggerJSONCallbacks struct {
 	Process               func(swagger *Swagger)
 }
 
-func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
+func GenerateSwaggerJSON(hm *gorpc.HandlersManager, host string, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
 	swagger := &Swagger{
 		SpecVersion: "2.0",
 		Info: Info{
@@ -130,6 +130,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 			<p>API supports ETag.</p>`,
 		},
 		BasePath:    "/",
+		Host:        host,
 		Port:        apiPort,
 		Consumes:    []string{"application/json"},
 		Produces:    []string{"application/json"},

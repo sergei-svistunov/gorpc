@@ -32,7 +32,7 @@ func main() {
 	}))
 
 	// Docs
-	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm, 8080, http_json.SwaggerJSONCallbacks{}))
+	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm, "localhost", 8080, http_json.SwaggerJSONCallbacks{}))
 	http.Handle("/docs/", http.StripPrefix("/docs", swagger_ui.NewHTTPHandler()))
 
 	// Client SDK
