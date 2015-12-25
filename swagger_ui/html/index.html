@@ -71,7 +71,11 @@
             hljs.highlightBlock(e)
           });
 
-          swaggerUi.api.setHost(location.hostname + ":" + swaggerUi.api.swaggerObject.port);
+          var host = swaggerUi.api.swaggerObject.host;
+          var port = swaggerUi.api.swaggerObject.port;
+          if (location.hostname != host || !port) {
+            swaggerUi.api.setHost(location.hostname);
+          }
 
           installCodeMirror();
         },

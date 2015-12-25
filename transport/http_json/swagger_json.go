@@ -13,6 +13,7 @@ type Swagger struct {
 	SpecVersion         string              `json:"swagger"`
 	Info                Info                `json:"info"`
 	BasePath            string              `json:"basePath"`
+	Host                string              `json:"host,omitempty"`
 	Port                uint16              `json:"port,omitempty"`
 	Schemes             []string            `json:"schemes,omitempty"`
 	Consumes            []string            `json:"consumes,omitempty"`
