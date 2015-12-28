@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sergei-svistunov/gorpc"
+	"go/src/strconv"
 )
 
 type Swagger struct {
@@ -14,7 +15,6 @@ type Swagger struct {
 	Info                Info                `json:"info"`
 	BasePath            string              `json:"basePath"`
 	Host                string              `json:"host,omitempty"`
-	Port                uint16              `json:"port,omitempty"`
 	Schemes             []string            `json:"schemes,omitempty"`
 	Consumes            []string            `json:"consumes,omitempty"`
 	Produces            []string            `json:"produces,omitempty"`
@@ -106,7 +106,15 @@ type SwaggerJSONCallbacks struct {
 	Process               func(swagger *Swagger)
 }
 
-func GenerateSwaggerJSON(hm *gorpc.HandlersManager, host string, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
+func GenerateSwaggerJSON(hm *gorpc.HandlersManager, hostname string, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
+	var host string
+	if hostname != "" && apiPort != 0 {
+		host := hostname
+		if apiPort != 0 {
+			host += ":" + strconv.FormatUint(apiPort, 10)
+		}
+	}
+
 	swagger := &Swagger{
 		SpecVersion: "2.0",
 		Info: Info{
@@ -131,7 +139,6 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, host string, apiPort uint16,
 		},
 		BasePath:    "/",
 		Host:        host,
-		Port:        apiPort,
 		Consumes:    []string{"application/json"},
 		Produces:    []string{"application/json"},
 		Paths:       map[string]PathItem{},
