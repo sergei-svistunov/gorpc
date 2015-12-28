@@ -111,7 +111,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, hostname string, apiPort uin
 	if hostname != "" && apiPort != 0 {
 		host := hostname
 		if apiPort != 0 {
-			host += ":" + strconv.FormatUint(apiPort, 10)
+			host += ":" + strconv.FormatUint(uint64(apiPort), 10)
 		}
 	}
 
