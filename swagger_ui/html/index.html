@@ -72,9 +72,8 @@
           });
 
           var host = swaggerUi.api.swaggerObject.host;
-          var port = swaggerUi.api.swaggerObject.port;
-          if (location.hostname != host || !port) {
-            swaggerUi.api.setHost(location.hostname);
+          if (location.hostname != host) {
+            swaggerUi.api.setHost(location.host);
           }
 
           installCodeMirror();
