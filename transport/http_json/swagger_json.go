@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/sergei-svistunov/gorpc"
-	"go/src/strconv"
 )
 
 type Swagger struct {
