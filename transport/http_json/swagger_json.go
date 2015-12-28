@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/sergei-svistunov/gorpc"
@@ -13,7 +14,7 @@ type Swagger struct {
 	SpecVersion         string              `json:"swagger"`
 	Info                Info                `json:"info"`
 	BasePath            string              `json:"basePath"`
-	Port                uint16              `json:"port,omitempty"`
+	Host                string              `json:"host,omitempty"`
 	Schemes             []string            `json:"schemes,omitempty"`
 	Consumes            []string            `json:"consumes,omitempty"`
 	Produces            []string            `json:"produces,omitempty"`
@@ -105,7 +106,15 @@ type SwaggerJSONCallbacks struct {
 	Process               func(swagger *Swagger)
 }
 
-func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
+func GenerateSwaggerJSON(hm *gorpc.HandlersManager, hostname string, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
+	var host string
+	if hostname != "" && apiPort != 0 {
+		host := hostname
+		if apiPort != 0 {
+			host += ":" + strconv.FormatUint(uint64(apiPort), 10)
+		}
+	}
+
 	swagger := &Swagger{
 		SpecVersion: "2.0",
 		Info: Info{
@@ -129,7 +138,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 			<p>API supports ETag.</p>`,
 		},
 		BasePath:    "/",
-		Port:        apiPort,
+		Host:        host,
 		Consumes:    []string{"application/json"},
 		Produces:    []string{"application/json"},
 		Paths:       map[string]PathItem{},

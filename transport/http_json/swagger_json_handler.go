@@ -10,8 +10,8 @@ type SwaggerJSONHandler struct {
 	jsonB []byte
 }
 
-func NewSwaggerJSONHandler(hm *gorpc.HandlersManager, apiPort uint16, callbacks SwaggerJSONCallbacks) *SwaggerJSONHandler {
-	jsonB, err := GenerateSwaggerJSON(hm, apiPort, callbacks)
+func NewSwaggerJSONHandler(hm *gorpc.HandlersManager, host string, apiPort uint16, callbacks SwaggerJSONCallbacks) *SwaggerJSONHandler {
+	jsonB, err := GenerateSwaggerJSON(hm, host, apiPort, callbacks)
 	if err != nil {
 		panic(err)
 	}
