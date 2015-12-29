@@ -109,7 +109,7 @@ type SwaggerJSONCallbacks struct {
 func GenerateSwaggerJSON(hm *gorpc.HandlersManager, hostname string, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
 	var host string
 	if hostname != "" && apiPort != 0 {
-		host := hostname
+		host = hostname
 		if apiPort != 0 {
 			host += ":" + strconv.FormatUint(uint64(apiPort), 10)
 		}

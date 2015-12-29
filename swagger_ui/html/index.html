@@ -52,14 +52,12 @@
 
   <script type="text/javascript">
     $(function () {
-      var url = "/swagger.json";
-
       // Pre load translate...
       if(window.SwaggerTranslator) {
         window.SwaggerTranslator.translate();
       }
       window.swaggerUi = new SwaggerUi({
-        url: url,
+        url: "/swagger.json",
         dom_id: "swagger-ui-container",
         supportedSubmitMethods: ['get', 'post'],
         onComplete: function(swaggerApi, swaggerUi){
@@ -71,11 +69,13 @@
             hljs.highlightBlock(e)
           });
 
-          var host = swaggerUi.api.swaggerObject.host;
-          if (location.hostname != host) {
+          var swaggerHost = swaggerUi.api.swaggerObject.host;
+          var swaggerHostname = swaggerHost.split(":")[0];
+          if (location.hostname != swaggerHostname) {
             swaggerUi.api.setHost(location.host);
           }
 
+          // TODO: use swagger option jsonEditor (not released yet)
           installCodeMirror();
         },
         onFailure: function(data) {
