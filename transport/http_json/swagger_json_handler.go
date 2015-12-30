@@ -23,7 +23,7 @@ func NewSwaggerJSONHandler(hm *gorpc.HandlersManager, apiPort uint16, callbacks 
 func (h *SwaggerJSONHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var host string
 	if h.apiPort != 0 {
-		hostname, _, err := net.SplitHostPort(req.Header.Get("Host"))
+		hostname, _, err := net.SplitHostPort(req.Host)
 		if err == nil {
 			host = hostname + ":" + strconv.FormatUint(uint64(h.apiPort), 10)
 		} else {
