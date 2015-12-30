@@ -69,12 +69,6 @@
             hljs.highlightBlock(e)
           });
 
-          var swaggerHost = swaggerUi.api.swaggerObject.host;
-          var swaggerHostname = swaggerHost.split(":")[0];
-          if (location.hostname != swaggerHostname) {
-            swaggerUi.api.setHost(location.host);
-          }
-
           // TODO: use swagger option jsonEditor (not released yet)
           installCodeMirror();
         },

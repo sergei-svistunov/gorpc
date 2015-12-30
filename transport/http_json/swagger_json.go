@@ -2,9 +2,7 @@ package http_json
 
 import (
 	"bytes"
-	"encoding/json"
 	"reflect"
-	"strconv"
 	"strings"
 
 	"github.com/sergei-svistunov/gorpc"
@@ -106,15 +104,7 @@ type SwaggerJSONCallbacks struct {
 	Process               func(swagger *Swagger)
 }
 
-func GenerateSwaggerJSON(hm *gorpc.HandlersManager, hostname string, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
-	var host string
-	if hostname != "" && apiPort != 0 {
-		host = hostname
-		if apiPort != 0 {
-			host += ":" + strconv.FormatUint(uint64(apiPort), 10)
-		}
-	}
-
+func GenerateSwaggerJSON(hm *gorpc.HandlersManager, host string, callbacks SwaggerJSONCallbacks) (*Swagger, error) {
 	swagger := &Swagger{
 		SpecVersion: "2.0",
 		Info: Info{
@@ -242,8 +232,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, hostname string, apiPort uin
 	if callbacks.Process != nil {
 		callbacks.Process(swagger)
 	}
-
-	return json.Marshal(swagger)
+	return swagger, nil
 }
 
 func typeName(t reflect.Type) (name string) {
