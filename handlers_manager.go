@@ -444,9 +444,11 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler HandlerVersi
 
 	if out[1].IsNil() {
 		val := out[0].Interface()
-		if out[0].IsNil() && handler.Response.Kind() == reflect.Slice {
+
+		if handler.Response.Kind() == reflect.Slice && out[0].IsNil(){
 			val = reflect.MakeSlice(handler.Response, 0, 0).Interface()
 		}
+
 		if callback := hm.callbacks.OnSuccess; callback != nil {
 			callback(ctx, val)
 		}
