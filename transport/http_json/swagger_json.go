@@ -298,7 +298,10 @@ func getOrCreateSchema(definitions Definitions, t reflect.Type) *Schema {
 			}
 			name := field.Tag.Get("json")
 			if name == "" {
-				name = field.Name
+				name = field.Tag.Get("key")
+				if name == "" {
+					name = field.Name
+				}
 			}
 			if field.Type.Kind() != reflect.Ptr {
 				result.Required = append(result.Required, name)
