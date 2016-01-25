@@ -13,3 +13,116 @@ You write handlers in native Go (with some restrictions), register them in Handl
  * **github.com/sergei-svistunov/gorpc:** framework's core
  * **github.com/sergei-svistunov/gorpc/transport/http_json:** transport's implementation over HTTP with serialization into JSON
  * **github.com/sergei-svistunov/gorpc/swagger_ui:** Swagger UI in one Go library
+
+## Tutorial
+### Chapter 1. Simple service ([Code](https://github.com/sergei-svistunov/gorpc-tutor/tree/chapter-1))
+**Task: Write a service that has a simple handler that does not have arguments and returns string "Hello world"**
+
+At first, you have to create folder where you will implement handlers. I prefer `handlers`. Now you have to create subpackage `hello/world` that will implement the functionality from the task. The package must provide structure that implement interface `IHandler`. `IHandler` defines 2 methods:
+ * `Caption()`: returns short method description;
+ * `Description()`: returns long method description.
+And also you should implement constructor, for example `NewHandler()`.
+  
+Let's create file `handlers/hello/world/world.go` with content:
+```go
+package world
+
+type Handler struct {}
+
+func NewHandler() *Handler {
+	return &Handler{}
+}
+
+func (h *Handler) Caption() string {
+	return `"Hello world" handler`
+}
+
+func (h *Handler) Description() string {
+	return `Returns string with "Hello world" message`
+}
+```
+
+GoRPС supports handlers versioning (not whole API). That is way you should implement a separate handler for each version using name mask `V[/d]+` (`V1`, `V2`, `V3`, ...). Each handler have to fit prototype `func V[/d]+(ctx, inArgs) (outRes, error) {...}`, where:
+ * `ctx`: `context.Context` from package `golang.org/x/net/context`;
+ * `inArgs`: structure that describes handler arguments (see chapter 2);
+ * `outRes`: hander type;
+ * `error`: each handler can return error (see chapter 3).
+
+Handler `hello/world` does not have arguments, that is way you have to pass link to empty structure. Let's implement first version. I suggest store each version in a separate file, for example `handlers/hello/world/v1.go`:
+```go
+package world
+
+import "golang.org/x/net/context"
+
+func (*Handler) V1(ctx context.Context, opts *struct{}) (string, error) {
+	return "Hello world", nil
+}
+```
+
+First simple handler is ready. Now you have to implement the service. A typical service contains:
+ * Creating of object of type HandlersManager;
+ * Creating and registration handlers in HandlersManager object;
+ * Implemetation of HTTP server with locations:
+   * API base location (for example `/`), implemented in `github.com/sergei-svistunov/gorpc/transport/http_json`, function `NewAPIHandler`;
+   * Location that returns Swagger JSON (`/swagger.json`), also implemented in `github.com/sergei-svistunov/gorpc/transport/http_json`, function `NewSwaggerJSONHandler`;
+   * Location with Swagger UI (for example `/docs/`), implemented in `github.com/sergei-svistunov/gorpc/swagger_ui`, function `NewHTTPHandler`;
+   * Location that returns client library (for example `/client.go`), optional, implemented in `github.com/sergei-svistunov/gorpc/transport/http_json/adapter`, function `NewHandler`.
+
+Let's implement it. Create file `main.go`:
+```go
+package main
+
+import (
+	"net/http"
+
+	// Import GoRPC libraries
+	"github.com/sergei-svistunov/gorpc"
+	"github.com/sergei-svistunov/gorpc/swagger_ui"
+	"github.com/sergei-svistunov/gorpc/transport/http_json"
+	"github.com/sergei-svistunov/gorpc/transport/http_json/adapter"
+
+	// Import handlers
+	handlerHelloWorld "github.com/sergei-svistunov/gorpc-tutor/server/handlers/hello/world"
+)
+
+func main() {
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc-tutor/server/handlers", gorpc.HandlersManagerCallbacks{})
+
+	hm.MustRegisterHandlers(
+		handlerHelloWorld.NewHandler(),
+	)
+
+	// Base API location
+	http.Handle("/", http_json.NewAPIHandler(hm, nil, http_json.APIHandlerCallbacks{}))
+
+	// Docs
+	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm, 0, http_json.SwaggerJSONCallbacks{}))
+	http.Handle("/docs/", http.StripPrefix("/docs", swagger_ui.NewHTTPHandler()))
+
+	// Client SDK
+	http.Handle("/client.go", adapter.NewHandler(hm))
+
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		panic(err)
+	}
+
+}
+```
+
+That is all. Now you can run your application and open URL http://127.0.0.1/docs in your browser and enjoy Swagger UI:
+<img src="https://img-fotki.yandex.ru/get/65488/35275402.0/0_b85fc_39a150be_orig">
+
+### Chapter 2. Simple arguments ([Code](https://github.com/sergei-svistunov/gorpc-tutor/tree/chapter-2))
+**Task: Write a service that returns sum of 2 numbers**
+
+### Chapter 3. Errors definitions ([Code](https://github.com/sergei-svistunov/gorpc-tutor/tree/chapter-3))
+**Task: Write a service that returns division of 2 numbers**
+
+### Chapter 4. More about versions ([Code](https://github.com/sergei-svistunov/gorpc-tutor/tree/chapter-4))
+**Task: Write a service that returns sun of N numbers**
+
+### Chapter 5. Complex arguments ([Code](https://github.com/sergei-svistunov/gorpc-tutor/tree/chapter-5))
+**Task: ???**
+
+### Chapter 6. Сaching ([Code](https://github.com/sergei-svistunov/gorpc-tutor/tree/chapter-6))
+**Task: ???**
