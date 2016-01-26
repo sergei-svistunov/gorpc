@@ -129,7 +129,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		}
 
 		ctxType := vMethodType.Type.In(1)
-		if ctxType.Kind() != reflect.Interface || ctxType.PkgPath() != "golang.org/x/net/context" || ctxType.Name() != "Context" {
+		if ctxType.Kind() != reflect.Interface || !strings.HasSuffix(ctxType.PkgPath(), "golang.org/x/net/context") || ctxType.Name() != "Context" {
 			return fmt.Errorf("Invalid prototype for version number %d of handler %s. First argument must be \"Context\" from package \"golang.org/x/net/context\"", handlerVersion, handlerPath)
 		}
 
@@ -452,6 +452,11 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler HandlerVersi
 
 	if out[1].IsNil() {
 		val := out[0].Interface()
+
+		if handler.Response.Kind() == reflect.Slice && out[0].IsNil(){
+			val = reflect.MakeSlice(handler.Response, 0, 0).Interface()
+		}
+
 		if callback := hm.callbacks.OnSuccess; callback != nil {
 			callback(ctx, val)
 		}

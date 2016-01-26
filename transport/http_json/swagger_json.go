@@ -2,7 +2,6 @@ package http_json
 
 import (
 	"bytes"
-	"encoding/json"
 	"reflect"
 	"strings"
 
@@ -13,7 +12,7 @@ type Swagger struct {
 	SpecVersion         string              `json:"swagger"`
 	Info                Info                `json:"info"`
 	BasePath            string              `json:"basePath"`
-	Port                uint16              `json:"port,omitempty"`
+	Host                string              `json:"host,omitempty"`
 	Schemes             []string            `json:"schemes,omitempty"`
 	Consumes            []string            `json:"consumes,omitempty"`
 	Produces            []string            `json:"produces,omitempty"`
@@ -105,7 +104,7 @@ type SwaggerJSONCallbacks struct {
 	Process               func(swagger *Swagger)
 }
 
-func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks SwaggerJSONCallbacks) ([]byte, error) {
+func GenerateSwaggerJSON(hm *gorpc.HandlersManager, host string, callbacks SwaggerJSONCallbacks) (*Swagger, error) {
 	swagger := &Swagger{
 		SpecVersion: "2.0",
 		Info: Info{
@@ -129,7 +128,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 			<p>API supports ETag.</p>`,
 		},
 		BasePath:    "/",
-		Port:        apiPort,
+		Host:        host,
 		Consumes:    []string{"application/json"},
 		Produces:    []string{"application/json"},
 		Paths:       map[string]PathItem{},
@@ -233,8 +232,7 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, apiPort uint16, callbacks Sw
 	if callbacks.Process != nil {
 		callbacks.Process(swagger)
 	}
-
-	return json.Marshal(swagger)
+	return swagger, nil
 }
 
 func typeName(t reflect.Type) (name string) {
@@ -300,7 +298,10 @@ func getOrCreateSchema(definitions Definitions, t reflect.Type) *Schema {
 			}
 			name := field.Tag.Get("json")
 			if name == "" {
-				name = field.Name
+				name = field.Tag.Get("key")
+				if name == "" {
+					name = field.Name
+				}
 			}
 			if field.Type.Kind() != reflect.Ptr {
 				result.Required = append(result.Required, name)

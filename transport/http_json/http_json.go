@@ -12,22 +12,24 @@ import (
 	"time"
 
 	"github.com/sergei-svistunov/gorpc"
+	"github.com/sergei-svistunov/gorpc/debug"
 	"github.com/sergei-svistunov/gorpc/transport/cache"
 	"golang.org/x/net/context"
 )
 
 type httpSessionResponse struct {
-	Result string      `json:"result"`
-	Data   interface{} `json:"data"`
-	Error  string      `json:"error"`
+	Result string       `json:"result"`
+	Data   interface{}  `json:"data"`
+	Error  string       `json:"error"`
+	Debug  *debug.Debug `json:"debug,omitempty"`
 }
 
 type APIHandlerCallbacks struct {
 	OnInitCtx             func(ctx context.Context, req *http.Request) context.Context
 	OnError               func(ctx context.Context, w http.ResponseWriter, req *http.Request, resp interface{}, err *gorpc.CallHandlerError)
 	OnPanic               func(ctx context.Context, w http.ResponseWriter, r interface{}, trace []byte, req *http.Request)
-	OnStartServing        func(req *http.Request)
-	OnEndServing          func(req *http.Request, startTime time.Time)
+	OnStartServing        func(ctx context.Context, req *http.Request)
+	OnEndServing          func(ctx context.Context, req *http.Request, startTime time.Time)
 	OnBeforeWriteResponse func(ctx context.Context, w http.ResponseWriter)
 	OnSuccess             func(ctx context.Context, req *http.Request, handlerResponse interface{}, startTime time.Time)
 	On404                 func(ctx context.Context, req *http.Request)
@@ -61,12 +63,12 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx = cache.NewContext(ctx)
 
 	if h.callbacks.OnStartServing != nil {
-		h.callbacks.OnStartServing(req)
+		h.callbacks.OnStartServing(ctx, req)
 	}
 
 	defer func() {
 		if h.callbacks.OnEndServing != nil {
-			h.callbacks.OnEndServing(req, startTime)
+			h.callbacks.OnEndServing(ctx, req, startTime)
 		}
 
 		if r := recover(); r != nil {
@@ -206,6 +208,9 @@ func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSession
 }
 
 func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *httpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (*cache.CacheEntry, *gorpc.CallHandlerError) {
+	if h.IsDebug(req) {
+		ctx = context.WithValue(ctx, debug.DebugContextKey, debug.NewDebug())
+	}
 	handlerResponse, err := h.hm.CallHandler(ctx, handler, params)
 	if err != nil {
 		if err.Type == gorpc.ErrorReturnedFromCall {
@@ -219,6 +224,9 @@ func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *htt
 
 	resp.Result = "OK"
 	resp.Data = handlerResponse
+	if debugObj, ok := debug.GetDebugFromContext(ctx); ok {
+		resp.Debug = debugObj
+	}
 	return h.createCacheEntry(ctx, resp, cacheKey, req)
 }
 
@@ -281,6 +289,8 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	var err error
 	if cacheEntry.CompressedContent != nil && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
 		w.Header().Set("Content-Encoding", "gzip")
@@ -312,4 +322,8 @@ func (h *APIHandler) writeError(ctx context.Context, w http.ResponseWriter, erro
 		error = http.StatusText(code)
 	}
 	http.Error(w, error, code)
+}
+
+func (h *APIHandler) IsDebug(req *http.Request) bool {
+	return req.FormValue("debug") == "true"
 }
