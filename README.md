@@ -115,6 +115,77 @@ That is all. Now you can run your application and open URL http://127.0.0.1/docs
 ### Chapter 2. Simple arguments ([Code](https://github.com/sergei-svistunov/gorpc-tutor/tree/chapter-2))
 **Task: Write a service that returns sum of 2 numbers**
 
+To describe input arguments you must define structure in that each field is an argument. Field must have exported name and struct tag that contains required field "description" and optional fieeld "key". Type of argument must be one of core type or be described in the same package.
+
+A handler can return not only core type, it can return complex structure. Each field of the structure must have struct tag with field "description" and also can have additional field that can be used in marshaling (for example "json").
+
+Let's create new hanldler `/calc/sum` that will recive 2 numbers and returns a object with sum and overflow flag:
+`handlers/hello/calc/sum/sum.go`
+```go
+package sum
+
+type Handler struct{}
+
+func NewHandler() *Handler {
+	return &Handler{}
+}
+
+func (h *Handler) Caption() string {
+	return `"Summarize numbers`
+}
+
+func (h *Handler) Description() string {
+	return `Returns sum of numbers`
+}
+```
+`handlers/hello/calc/sum/v1.go`
+```go
+package sum
+
+import "golang.org/x/net/context"
+
+type v1Args struct {
+	Num1 uint `key:"num1" description:"First number"`
+	Num2 uint `key:"num2" description:"Second number"`
+}
+
+type v1Res struct {
+	Sum      uint `json:"sum" description:"Sum of numbers"`
+	Overflow bool `json:"overflow" description:"True if sum out of range"`
+}
+
+func (*Handler) V1(ctx context.Context, opts *v1Args) (v1Res, error) {
+	res := v1Res{
+		Sum:      opts.Num1 + opts.Num2,
+		Overflow: ^uint(0)-opts.Num1 < opts.Num2,
+	}
+
+	return res, nil
+}
+```
+
+Now register new handler in `main.go`:
+```go
+import (
+ 	//....
+	handlerCalcSum "github.com/sergei-svistunov/gorpc-tutor/server/handlers/calc/sum"
+	//....
+)
+
+func main() {
+	//....
+	hm.MustRegisterHandlers(
+		//....
+		handlerCalcSum.NewHandler(),
+	)
+	//....
+}
+```
+
+Run the application and open http://127.0.0.1/docs. There will be new handler with it's description and description it's fields.
+
+ToDo: Add screenshot
+
 ### Chapter 3. Errors definitions ([Code](https://github.com/sergei-svistunov/gorpc-tutor/tree/chapter-3))
 **Task: Write a service that returns division of 2 numbers**
 
