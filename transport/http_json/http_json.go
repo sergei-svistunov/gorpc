@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"runtime"
@@ -16,6 +17,8 @@ import (
 	"github.com/sergei-svistunov/gorpc/transport/cache"
 	"golang.org/x/net/context"
 )
+
+var PrintDebug = false
 
 type httpSessionResponse struct {
 	Result string       `json:"result"`
@@ -79,7 +82,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			if h.callbacks.OnPanic != nil {
 				h.callbacks.OnPanic(ctx, w, r, trace, req)
 			}
-			h.writeError(ctx, w, "", http.StatusInternalServerError)
+			h.writeInternalError(ctx, w, fmt.Sprintf("%#v", r)+"\n\n"+string(trace))
 		}
 	}()
 
@@ -122,7 +125,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		case gorpc.ErrorInParameters:
 			h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
 		default:
-			h.writeError(ctx, w, "", http.StatusInternalServerError)
+			h.writeInternalError(ctx, w, err.Error())
 		}
 		return
 	}
@@ -313,15 +316,23 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 	}
 }
 
-func (h *APIHandler) writeError(ctx context.Context, w http.ResponseWriter, error string, code int) {
+func (h *APIHandler) writeError(ctx context.Context, w http.ResponseWriter, err string, code int) {
 	if h.callbacks.OnBeforeWriteResponse != nil {
 		h.callbacks.OnBeforeWriteResponse(ctx, w)
 	}
 
-	if error == "" {
-		error = http.StatusText(code)
+	if err == "" {
+		err = http.StatusText(code)
 	}
-	http.Error(w, error, code)
+	http.Error(w, err, code)
+}
+
+func (h *APIHandler) writeInternalError(ctx context.Context, w http.ResponseWriter, err string) {
+	if PrintDebug {
+		h.writeError(ctx, w, http.StatusText(http.StatusInternalServerError)+":\n"+err, http.StatusInternalServerError)
+	} else {
+		h.writeError(ctx, w, "", http.StatusInternalServerError)
+	}
 }
 
 func (h *APIHandler) IsDebug(req *http.Request) bool {
