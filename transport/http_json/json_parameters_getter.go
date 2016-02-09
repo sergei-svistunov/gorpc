@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strconv"
+	"github.com/tonnerre/golang-pretty"
 )
 
 const defaultMaxFormSize = int64(10 << 20) // 10 MB is a lot of text.
@@ -169,18 +171,26 @@ func (p *JsonParametersGetter) TraverseMap(path []string, name string, h func(k 
 }
 
 func (p *JsonParametersGetter) get(path []string, name string) (interface{}, bool) {
-	m := p.values
-	for _, key := range path {
-		if v, ok := m[key]; ok {
-			if m, ok = v.(map[string]interface{}); !ok {
-				return nil, false
-			}
-		} else {
+	var m interface{}
+	m = p.values
+
+	pretty.Println("\n\n", path, name)
+
+	for _, key := range append(path, name) {
+		pretty.Println("\t", key)
+		switch v := m.(type) {
+		case map[string]interface{}:
+			pretty.Println("\t\tmap")
+			m = v[key]
+		case []interface{}:
+			pretty.Println("\t\tslice")
+			i, _ := strconv.ParseInt(key, 10, 64)
+			m = v[i]
+		default:
+			pretty.Println("\t\tdefault", m)
 			return nil, false
 		}
 	}
-	if v, ok := m[name]; ok {
-		return v, true
-	}
-	return nil, false
+
+	return m, true
 }

@@ -12,6 +12,9 @@ func TestJsonParametersGetter(t *testing.T) {
 			"nested": map[string]interface{}{
 				"b": true,
 			},
+			"slice_in_slice": []interface{}{
+				[]interface{}{json.Number("1"), json.Number("2"), json.Number("3")},
+			},
 		},
 	}
 	if !p.IsExists(nil, "int") {
@@ -25,5 +28,8 @@ func TestJsonParametersGetter(t *testing.T) {
 	}
 	if v, err := p.GetBool([]string{"nested"}, "b"); err != nil || v != true {
 		t.Fatalf("'nested.b'(%z) != true, error: %v", v, err)
+	}
+	if v, err := p.GetInt([]string{"slice_in_slice", "0"}, "1"); err != nil || v != 2 {
+		t.Fatalf("'slice_in_slice[0][1]'(%d) != 2, error: %v", v, err)
 	}
 }
