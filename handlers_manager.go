@@ -632,7 +632,6 @@ func createContainerValue(t reflect.Type, v interface{}, param HandlerParameter,
 				t.Elem(),
 			)
 			if err != nil {
-				panic(err)
 				return reflect.ValueOf(nil), err
 			}
 
