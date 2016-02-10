@@ -179,7 +179,11 @@ func (p *JsonParametersGetter) get(path []string, name string) (interface{}, boo
 	for _, key := range append(path, name) {
 		switch v := m.(type) {
 		case map[string]interface{}:
-			m = v[key]
+			var exists bool
+			m, exists = v[key]
+			if !exists {
+				return nil, false
+			}
 		case []interface{}:
 			i, _ := strconv.ParseInt(key, 10, 64)
 			m = v[i]
