@@ -453,7 +453,7 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler HandlerVersi
 	if out[1].IsNil() {
 		val := out[0].Interface()
 
-		if handler.Response.Kind() == reflect.Slice && out[0].IsNil(){
+		if handler.Response.Kind() == reflect.Slice && out[0].IsNil() {
 			val = reflect.MakeSlice(handler.Response, 0, 0).Interface()
 		}
 
@@ -538,8 +538,20 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 
 		} else if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
 			container := structField
-			ok, err := handlerParameters.TraverseSlice(param.Path, param.Key, func(_ int, v interface{}) error {
-				val, err := createContainerValue(t.Elem(), v, param, handlerParameters)
+			ok, err := handlerParameters.TraverseSlice(param.Path, param.Key, func(i int, v interface{}) error {
+				fields := param.Fields
+				if t.Elem().Kind() == reflect.Struct {
+					f, _ := processRequestType(t.Elem())
+					fields = f.Fields
+				}
+				val, err := createContainerValue(t.Elem(), v,
+					HandlerParameter{
+						Path:    append(param.Path, param.Key),
+						Key:     strconv.FormatInt(int64(i), 10),
+						RawType: t.Elem(),
+						Fields:  fields,
+					},
+					handlerParameters)
 				if err != nil {
 					return err
 				}
@@ -582,21 +594,53 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 	return nil
 }
 
-func createContainerValue(t reflect.Type, v interface{}, param HandlerParameter,
-	handlerParameters IHandlerParameters) (reflect.Value, error) {
-
+func createContainerValue(t reflect.Type, v interface{}, param HandlerParameter, handlerParameters IHandlerParameters) (reflect.Value, error) {
 	val := reflect.ValueOf(v)
 	if t.Kind() == reflect.Ptr {
 		t = val.Elem().Type()
 	}
 	if t.Kind() == reflect.Struct {
 		val = reflect.New(t).Elem()
-		err := unmarshalParameters(val,
-			handlerParameters,
-			param.Fields, t)
+		err := unmarshalParameters(val, handlerParameters, param.Fields, t)
 		if err != nil {
 			return reflect.ValueOf(nil), err
 		}
+	}
+	if t.Kind() == reflect.Slice {
+		sliceVal := reflect.New(t).Elem()
+		for i := 0; i < val.Len(); i++ {
+			elemVal := reflect.New(t.Elem()).Elem()
+			fields := param.Fields
+			if t.Elem().Kind() == reflect.Struct {
+				f, _ := processRequestType(t.Elem())
+				fields = f.Fields
+				for fi, _ := range fields {
+					fields[fi].Path = append(param.Path, param.Key, strconv.FormatInt(int64(i), 10))
+				}
+			}
+			err := unmarshalParameters(
+				elemVal,
+				handlerParameters,
+				[]HandlerParameter{
+					HandlerParameter{
+						Path:    append(param.Path, param.Key),
+						Key:     strconv.FormatInt(int64(i), 10),
+						RawType: t.Elem(),
+						Fields:  fields,
+					},
+				},
+				t.Elem(),
+			)
+			if err != nil {
+				panic(err)
+				return reflect.ValueOf(nil), err
+			}
+
+			sliceVal = reflect.Append(sliceVal, elemVal)
+
+			//pretty.Println(val.Index(i).Interface())
+		}
+		val = sliceVal
 	}
 	return val, nil
 }

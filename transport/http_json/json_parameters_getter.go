@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strconv"
 )
 
 const defaultMaxFormSize = int64(10 << 20) // 10 MB is a lot of text.
@@ -15,6 +16,9 @@ type JsonParametersGetter struct {
 }
 
 func (p *JsonParametersGetter) Parse() error {
+	if p.values != nil {
+		return nil
+	}
 	defer p.Req.Close()
 	if p.MaxFormSize == 0 {
 		p.MaxFormSize = defaultMaxFormSize
@@ -169,18 +173,20 @@ func (p *JsonParametersGetter) TraverseMap(path []string, name string, h func(k 
 }
 
 func (p *JsonParametersGetter) get(path []string, name string) (interface{}, bool) {
-	m := p.values
-	for _, key := range path {
-		if v, ok := m[key]; ok {
-			if m, ok = v.(map[string]interface{}); !ok {
-				return nil, false
-			}
-		} else {
+	var m interface{}
+	m = p.values
+
+	for _, key := range append(path, name) {
+		switch v := m.(type) {
+		case map[string]interface{}:
+			m = v[key]
+		case []interface{}:
+			i, _ := strconv.ParseInt(key, 10, 64)
+			m = v[i]
+		default:
 			return nil, false
 		}
 	}
-	if v, ok := m[name]; ok {
-		return v, true
-	}
-	return nil, false
+
+	return m, true
 }
