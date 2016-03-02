@@ -56,7 +56,7 @@ func TestHandlerManager_PrepareParameters_SliceInSlice(t *testing.T) {
 					},
 					map[string]interface{}{
 						"f1": json.Number("3"),
-						"f2": json.Number("30"),
+						"f2": nil,
 					},
 				},
 			},
