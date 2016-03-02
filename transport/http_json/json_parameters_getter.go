@@ -34,8 +34,8 @@ func (p *JsonParametersGetter) Fork(values map[string]interface{}) interface{} {
 }
 
 func (p *JsonParametersGetter) IsExists(path []string, name string) bool {
-	_, ok := p.get(path, name)
-	return ok
+	v, ok := p.get(path, name)
+	return ok && v != nil
 }
 
 func (p *JsonParametersGetter) GetString(path []string, name string) (string, error) {
