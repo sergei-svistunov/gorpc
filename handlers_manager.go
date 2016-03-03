@@ -519,7 +519,6 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 			}
 			continue
 		}
-
 		structField := res.FieldByIndex(param.structField.Index)
 		if structField.Kind() == reflect.Ptr {
 			structField.Set(reflect.New(structField.Type().Elem()))
@@ -555,6 +554,29 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 				if err != nil {
 					return err
 				}
+
+				//ToDo: Fix it to right way, need change major version
+				if container.Type().Elem().Kind() != val.Kind() && val.Kind() == reflect.String {
+					newVal := reflect.New(container.Type().Elem()).Elem()
+					switch container.Type().Elem().Kind() {
+					case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+						if v, err := strconv.ParseInt(val.String(), 10, 64); err == nil {
+							newVal.SetInt(v)
+						} else {
+							return err
+						}
+					case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+						if v, err := strconv.ParseUint(val.String(), 10, 64); err == nil {
+							newVal.SetUint(v)
+						} else {
+							return err
+						}
+					default:
+						return fmt.Errorf("Cannot convert to %s", container.Type().Elem().Kind().String())
+					}
+					val = newVal
+				}
+
 				container = reflect.Append(container, val)
 				return nil
 			})
