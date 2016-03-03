@@ -1,6 +1,7 @@
 package http_json
 
 import (
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,7 +28,6 @@ func (s *HttpJSONSute) SetupTest() {
 }
 
 func TestRunHttpJSONSute(t *testing.T) {
-	return
 	suite.Run(t, new(HttpJSONSute))
 }
 
@@ -50,6 +50,20 @@ func (s *HttpJSONSute) TestHttpJSON_CallWithoutRequiredArguments_BadRequest() {
 
 	s.NoError(err)
 	s.Equal(400, resp.StatusCode)
+}
+
+func (s *HttpJSONSute) TestHttpJSON_CallWithOptionalSlice_OneElement_Success() {
+	s.server.Start()
+	defer s.server.Close()
+
+	resp, err := http.Get(s.server.URL + "/test/handler1/v5/?slice_of_int=123")
+
+	s.NoError(err)
+	s.Equal(200, resp.StatusCode)
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+	s.Contains(string(body), "123")
 }
 
 // Benchmarks
