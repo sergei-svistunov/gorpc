@@ -239,7 +239,9 @@ func (h *APIHandler) getCacheKey(ctx context.Context, req *http.Request, handler
 	}
 
 	if h.callbacks.GetCacheKey != nil {
-		return h.callbacks.GetCacheKey(ctx, req, params.Interface())
+		if cacheKey := h.callbacks.GetCacheKey(ctx, req, params.Interface()); cacheKey != nil {
+			return cacheKey
+		}
 	}
 
 	buf := bytes.NewBufferString(handler.Route)
