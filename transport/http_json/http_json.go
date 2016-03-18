@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"io"
 
 	"github.com/sergei-svistunov/gorpc"
 	"github.com/sergei-svistunov/gorpc/debug"
@@ -300,6 +301,12 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 	if cacheEntry.CompressedContent != nil && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
 		w.Header().Set("Content-Encoding", "gzip")
 		_, err = w.Write(cacheEntry.CompressedContent)
+	} else if cacheEntry.Content == nil && cacheEntry.CompressedContent != nil {
+		//cacheEntry.Content might be empty when client does not accept gzip encoding
+		//so we need to decompress Compressed Content
+		gzipReader, _ := gzip.NewReader(bytes.NewReader(cacheEntry.CompressedContent))
+		io.Copy(w, gzipReader)
+		gzipReader.Close()
 	} else {
 		_, err = w.Write(cacheEntry.Content)
 	}
