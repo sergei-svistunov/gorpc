@@ -11,6 +11,7 @@ import (
 	"github.com/sergei-svistunov/gorpc/transport/http_json"
 	http_json_adapter "github.com/sergei-svistunov/gorpc/transport/http_json/adapter"
 
+	"github.com/sergei-svistunov/gorpc/transport/jsonrpc"
 	"golang.org/x/net/context"
 )
 
@@ -31,9 +32,14 @@ func main() {
 		},
 	}))
 
+	// JSONRPC API
+	http.Handle("/jsonrpc", jsonrpc.NewAPIHandler(hm, nil, jsonrpc.APIHandlerCallbacks{}))
+
 	// Docs
 	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm, 0, http_json.SwaggerJSONCallbacks{}))
 	http.Handle("/docs/", http.StripPrefix("/docs", swagger_ui.NewHTTPHandler()))
+
+	http.Handle("/jsonrpc_scheme.json", jsonrpc.NewSchemeHandler(hm, 0))
 
 	// Client SDK
 	http.Handle("/client.go", http_json_adapter.NewHandler(hm))
