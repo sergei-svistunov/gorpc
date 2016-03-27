@@ -98,6 +98,14 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
+	if req.Method == "OPTIONS" { // CORS for browsers
+		w.Header().Set("Access-Control-Allow-Origin", req.Header.Get("Origin"))
+		w.Header().Set("Access-Control-Allow-Methods", "GET")
+		w.Header().Set("Access-Control-Max-Age", "1000")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		return
+	}
+
 	if req.Method != "POST" {
 		h.writeHttpError(ctx, w, http.StatusMethodNotAllowed)
 		return

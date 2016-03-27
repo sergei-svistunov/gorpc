@@ -33,7 +33,11 @@ func main() {
 	}))
 
 	// JSONRPC API
-	http.Handle("/jsonrpc", jsonrpc.NewAPIHandler(hm, nil, jsonrpc.APIHandlerCallbacks{}))
+	http.Handle("/jsonrpc", jsonrpc.NewAPIHandler(hm, nil, jsonrpc.APIHandlerCallbacks{
+		OnBeforeWriteResponse: func(ctx context.Context, w http.ResponseWriter) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		},
+	}))
 
 	// Docs
 	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm, 0, http_json.SwaggerJSONCallbacks{}))
