@@ -290,7 +290,7 @@ func getOrCreateSchema(definitions Definitions, t reflect.Type) *Schema {
 
 	result.Type = typeName(t)
 	if result.Type == "object" {
-		name := t.String()
+		name := t.PkgPath() + "/" + t.String()
 		if _, ok := definitions[name]; ok {
 			result = Schema{Ref: "#/definitions/" + name}
 			return &result
