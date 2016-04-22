@@ -26,11 +26,12 @@ type IBalancer interface {
 }
 
 type Callbacks struct {
-	OnStart func(ctx context.Context, req *http.Request)
-	OnFinish func(ctx context.Context, req *http.Request, startTime time.Time)
-	OnError func(ctx context.Context, req *http.Request, err error)
-	OnPanic func(ctx context.Context, req *http.Request, r interface{}, trace []byte)
-	OnPrepareRequest func(ctx context.Context, req *http.Request)
+	OnStart          func(ctx context.Context, req *http.Request) context.Context
+	OnPrepareRequest func(ctx context.Context, req *http.Request, data interface{}) context.Context
+	OnSuccess        func(ctx context.Context, req *http.Request, data interface{})
+	OnError          func(ctx context.Context, req *http.Request, err error)
+	OnPanic          func(ctx context.Context, req *http.Request, r interface{}, trace []byte)
+	OnFinish         func(ctx context.Context, req *http.Request, startTime time.Time)
 }
 
 type >>>API_NAME<<< struct {
@@ -75,14 +76,14 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	var req *http.Request
 
 	if api.callbacks.OnStart != nil {
-		api.callbacks.OnStart(ctx, req)
-	}
-
-	if api.callbacks.OnFinish != nil {
-		defer api.callbacks.OnFinish(ctx, req, startTime)
+		ctx = api.callbacks.OnStart(ctx, req)
 	}
 
 	defer func() {
+		if api.callbacks.OnFinish != nil {
+			api.callbacks.OnFinish(ctx, req, startTime)
+		}
+
 		if r := recover(); r != nil {
 			const size = 64 << 10
 			buf := make([]byte, size)
@@ -123,7 +124,7 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if api.callbacks.OnPrepareRequest != nil {
-		api.callbacks.OnPrepareRequest(ctx, req)
+		ctx = api.callbacks.OnPrepareRequest(ctx, req)
 	}
 
 	if err := doRequest(api.client, req, buf, handlerErrors); err != nil {
@@ -131,6 +132,10 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 			api.callbacks.OnError(ctx, req, err)
 		}
 		return err
+	}
+
+	if api.callbacks.OnSuccess != nil {
+		api.callbacks.OnSuccess(ctx, req, buf)
 	}
 
 	return nil
