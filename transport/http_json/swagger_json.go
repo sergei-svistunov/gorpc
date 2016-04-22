@@ -102,6 +102,7 @@ type SwaggerJSONCallbacks struct {
 	OnPrepareBaseInfoJSON func(info *Info)
 	OnPrepareHandlerJSON  func(path string, data *Operation)
 	Process               func(swagger *Swagger)
+	TagName               func(path string) string
 }
 
 func GenerateSwaggerJSON(hm *gorpc.HandlersManager, host string, callbacks SwaggerJSONCallbacks) (*Swagger, error) {
@@ -140,8 +141,16 @@ func GenerateSwaggerJSON(hm *gorpc.HandlersManager, host string, callbacks Swagg
 	}
 
 	for _, path := range hm.GetHandlersPaths() {
+		var tagName string
+
 		info := hm.GetHandlerInfo(path)
-		tagName := strings.Split(path, "/")[1]
+
+		if callbacks.TagName == nil {
+			tagName = strings.Split(path, "/")[1]
+		} else {
+			tagName = callbacks.TagName(path)
+		}
+
 		swagger.Tags = append(swagger.Tags, Tag{Name: tagName})
 
 		for _, v := range info.Versions {
@@ -281,7 +290,7 @@ func getOrCreateSchema(definitions Definitions, t reflect.Type) *Schema {
 
 	result.Type = typeName(t)
 	if result.Type == "object" {
-		name := t.String()
+		name := t.PkgPath() + "/" + t.String()
 		if _, ok := definitions[name]; ok {
 			result = Schema{Ref: "#/definitions/" + name}
 			return &result
