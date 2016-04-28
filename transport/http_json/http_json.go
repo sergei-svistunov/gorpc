@@ -17,7 +17,6 @@ import (
 	"github.com/sergei-svistunov/gorpc/debug"
 	"github.com/sergei-svistunov/gorpc/transport/cache"
 	"golang.org/x/net/context"
-	"sync"
 )
 
 var PrintDebug = false
@@ -129,54 +128,37 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	done := &struct {
-		sync.RWMutex
-		flag bool
-		ch   chan bool
-	}{ch: make(chan bool, 1)}
+	done := make(chan bool, 1)
+	var cacheEntry *cache.CacheEntry
 
 	go func() {
-		defer func() {
-			done.flag = true
-			done.Unlock()
-			done.ch <- true
-		}()
-		cacheEntry, err := h.callHandlerWithCache(ctx, &resp, req, handler, params)
-		done.Lock()
-		if done.flag {
-			return
-		}
-		if ctx.Err() == context.DeadlineExceeded {
-			h.writeTimeoutError(ctx, req, w)
-			return
-		}
-		if err != nil {
-			if h.callbacks.OnError != nil {
-				h.callbacks.OnError(ctx, w, req, nil, err)
-			}
-			switch err.Type {
-			case gorpc.ErrorInParameters:
-				h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
-			default:
-				h.writeInternalError(ctx, w, err.Error())
-			}
-			return
-		}
-		h.writeResponse(ctx, cacheEntry, &resp, w, req, startTime)
+		defer func() { done <- true }()
+		cacheEntry, err = h.callHandlerWithCache(ctx, &resp, req, handler, params)
 	}()
+
+	// Wait handler or ctx timeout
 	select {
 	case <-ctx.Done():
-		done.Lock()
-		defer func() {
-			done.flag = true
-			done.Unlock()
-		}()
-		if done.flag {
-			break
-		}
-		h.writeTimeoutError(ctx, req, w)
-	case <-done.ch:
+	case <-done:
 	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		h.writeTimeoutError(ctx, req, w)
+		return
+	}
+	if err != nil {
+		if h.callbacks.OnError != nil {
+			h.callbacks.OnError(ctx, w, req, nil, err)
+		}
+		switch err.Type {
+		case gorpc.ErrorInParameters:
+			h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
+		default:
+			h.writeInternalError(ctx, w, err.Error())
+		}
+		return
+	}
+	h.writeResponse(ctx, cacheEntry, &resp, w, req, startTime)
 }
 
 func (h *APIHandler) CanServe(req *http.Request) bool {
