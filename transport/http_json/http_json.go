@@ -6,17 +6,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"runtime"
 	"strings"
 	"time"
-	"io"
 
 	"github.com/sergei-svistunov/gorpc"
 	"github.com/sergei-svistunov/gorpc/debug"
 	"github.com/sergei-svistunov/gorpc/transport/cache"
 	"golang.org/x/net/context"
+	"sync"
 )
 
 var PrintDebug = false
@@ -46,21 +47,32 @@ type APIHandler struct {
 	hm        *gorpc.HandlersManager
 	cache     cache.ICache
 	callbacks APIHandlerCallbacks
+	timeout   time.Duration
 }
 
-func NewAPIHandler(hm *gorpc.HandlersManager, cache cache.ICache, callbacks APIHandlerCallbacks) *APIHandler {
+func NewAPIHandler(hm *gorpc.HandlersManager, cache cache.ICache, callbacks APIHandlerCallbacks, timeout time.Duration) *APIHandler {
 	return &APIHandler{
 		hm:        hm,
 		cache:     cache,
 		callbacks: callbacks,
+		timeout:   timeout,
 	}
 }
 
 func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	startTime := time.Now()
 
-	// TODO: create context with reasonable timeout
-	ctx := context.Background()
+	var (
+		ctx   context.Context
+		close context.CancelFunc
+	)
+	if h.timeout > 0 {
+		ctx, close = context.WithTimeout(context.Background(), h.timeout)
+		defer close()
+	} else {
+		ctx = context.Background()
+	}
+
 	if h.callbacks.OnInitCtx != nil {
 		ctx = h.callbacks.OnInitCtx(ctx, req)
 	}
@@ -117,20 +129,54 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cacheEntry, err := h.callHandlerWithCache(ctx, &resp, req, handler, params)
-	if err != nil {
-		if h.callbacks.OnError != nil {
-			h.callbacks.OnError(ctx, w, req, nil, err)
+	done := &struct {
+		sync.RWMutex
+		flag bool
+		ch   chan bool
+	}{ch: make(chan bool, 1)}
+
+	go func() {
+		defer func() {
+			done.flag = true
+			done.Unlock()
+			done.ch <- true
+		}()
+		cacheEntry, err := h.callHandlerWithCache(ctx, &resp, req, handler, params)
+		done.Lock()
+		if done.flag {
+			return
 		}
-		switch err.Type {
-		case gorpc.ErrorInParameters:
-			h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
-		default:
-			h.writeInternalError(ctx, w, err.Error())
+		if ctx.Err() == context.DeadlineExceeded {
+			h.writeTimeoutError(ctx, req, w)
+			return
 		}
-		return
+		if err != nil {
+			if h.callbacks.OnError != nil {
+				h.callbacks.OnError(ctx, w, req, nil, err)
+			}
+			switch err.Type {
+			case gorpc.ErrorInParameters:
+				h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
+			default:
+				h.writeInternalError(ctx, w, err.Error())
+			}
+			return
+		}
+		h.writeResponse(ctx, cacheEntry, &resp, w, req, startTime)
+	}()
+	select {
+	case <-ctx.Done():
+		done.Lock()
+		defer func() {
+			done.flag = true
+			done.Unlock()
+		}()
+		if done.flag {
+			break
+		}
+		h.writeTimeoutError(ctx, req, w)
+	case <-done.ch:
 	}
-	h.writeResponse(ctx, cacheEntry, &resp, w, req, startTime)
 }
 
 func (h *APIHandler) CanServe(req *http.Request) bool {
@@ -346,4 +392,19 @@ func (h *APIHandler) writeInternalError(ctx context.Context, w http.ResponseWrit
 
 func (h *APIHandler) IsDebug(req *http.Request) bool {
 	return req.FormValue("debug") == "true"
+}
+
+func (h *APIHandler) writeTimeoutError(ctx context.Context, r *http.Request, w http.ResponseWriter) {
+	err := &gorpc.CallHandlerError{
+		Type: gorpc.ErrorReturnedFromCall,
+		Err:  errors.New("Request timed out"),
+	}
+	if h.callbacks.OnError != nil {
+		h.callbacks.OnError(ctx, w, r, nil, err)
+	}
+	h.writeError(ctx, w, err.UserMessage(), http.StatusServiceUnavailable)
+}
+
+func (h *APIHandler) SetTimeout(timeout time.Duration) {
+	h.timeout = timeout
 }

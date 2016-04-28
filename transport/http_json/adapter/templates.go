@@ -124,10 +124,10 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if api.callbacks.OnPrepareRequest != nil {
-		ctx = api.callbacks.OnPrepareRequest(ctx, req)
+		ctx = api.callbacks.OnPrepareRequest(ctx, req, data)
 	}
 
-	if err := doRequest(api.client, req, buf, handlerErrors); err != nil {
+	if err := doRequest(ctx, api.client, req, buf, handlerErrors); err != nil {
 		if api.callbacks.OnError != nil {
 			api.callbacks.OnError(ctx, req, err)
 		}
@@ -155,57 +155,78 @@ func createRawURL(url, path string, values url.Values) string {
 	return buf.String()
 }
 
-func doRequest(client *http.Client, request *http.Request, buf interface{}, handlerErrors map[string]int) error {
-	// Run
-	response, err := client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-
-	// Handle error
-	if response.StatusCode != http.StatusOK {
-		switch response.StatusCode {
-		// TODO separate error types for different status codes (and different callbacks)
-		/*
-		   case http.StatusForbidden:
-		   case http.StatusBadGateway:
-		   case http.StatusBadRequest:
-		*/
-		default:
-			return fmt.Errorf("Request %q failed. Server returns status code %d", request.URL.RequestURI(), response.StatusCode)
+func doRequest(ctx context.Context, client *http.Client, request *http.Request, buf interface{}, handlerErrors map[string]int) error {
+	return HTTPDo(ctx, client, request, func(response *http.Response, err error) error {
+		// Run
+		if err != nil {
+			return err
 		}
-	}
+		defer response.Body.Close()
 
-	// Read response
-	result, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return err
-	}
-
-	var mainResp httpSessionResponse
-	if err := json.Unmarshal(result, &mainResp); err != nil {
-		return fmt.Errorf("request %q failed to decode response %q: %v", request.URL.RequestURI(), string(result), err)
-	}
-
-	if mainResp.Result == "OK" {
-		if err := json.Unmarshal(mainResp.Data, buf); err != nil {
-			return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
-		}
-		return nil
-	}
-
-	if mainResp.Result == "ERROR" {
-		errCode, ok := handlerErrors[mainResp.Error]
-		if ok {
-			return &ServiceError{
-				Code: errCode,
-				Message: mainResp.Error,
+		// Handle error
+		if response.StatusCode != http.StatusOK {
+			switch response.StatusCode {
+			// TODO separate error types for different status codes (and different callbacks)
+			/*
+			   case http.StatusForbidden:
+			   case http.StatusBadGateway:
+			   case http.StatusBadRequest:
+			*/
+			default:
+				return fmt.Errorf("Request %q failed. Server returns status code %d", request.URL.RequestURI(), response.StatusCode)
 			}
 		}
-	}
 
-	return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
+		// Read response
+		result, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			return err
+		}
+
+		var mainResp httpSessionResponse
+		if err := json.Unmarshal(result, &mainResp); err != nil {
+			return fmt.Errorf("request %q failed to decode response %q: %v", request.URL.RequestURI(), string(result), err)
+		}
+
+		if mainResp.Result == "OK" {
+			if err := json.Unmarshal(mainResp.Data, buf); err != nil {
+				return fmt.Errorf("request %q failed to decode response data %+v: %v", request.URL.RequestURI(), mainResp.Data, err)
+			}
+			return nil
+		}
+
+		if mainResp.Result == "ERROR" {
+			errCode, ok := handlerErrors[mainResp.Error]
+			if ok {
+				return &ServiceError{
+					Code:    errCode,
+					Message: mainResp.Error,
+				}
+			}
+		}
+
+		return fmt.Errorf("request %q returned incorrect response %q", request.URL.RequestURI(), string(result))
+	})
+}
+
+// HTTPDo is taken and adapted from https://blog.golang.org/context
+func HTTPDo(ctx context.Context, client *http.Client, req *http.Request, f func(*http.Response, error) error) error {
+	c := make(chan error, 1)
+	go func() { c <- f(client.Do(req)) }()
+	select {
+	case <-ctx.Done():
+		if tr, ok := client.Transport.(canceler); ok {
+			tr.CancelRequest(req)
+			<-c // Wait for f to return.
+		}
+		return ctx.Err()
+	case err := <-c:
+		return err
+	}
+}
+
+type canceler interface {
+	CancelRequest(*http.Request)
 }
 
 // ServiceError uses to separate critical and non-critical errors which returns in external service response.

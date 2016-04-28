@@ -29,7 +29,7 @@ func main() {
 		OnPanic: func(ctx context.Context, w http.ResponseWriter, r interface{}, trace []byte, req *http.Request) {
 			log.Println(r, "\n", string(trace))
 		},
-	}))
+	}, 0))
 
 	// Docs
 	http.Handle("/swagger.json", http_json.NewSwaggerJSONHandler(hm, 0, http_json.SwaggerJSONCallbacks{}))
