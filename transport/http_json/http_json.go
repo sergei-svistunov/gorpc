@@ -49,12 +49,11 @@ type APIHandler struct {
 	timeout   time.Duration
 }
 
-func NewAPIHandler(hm *gorpc.HandlersManager, cache cache.ICache, callbacks APIHandlerCallbacks, timeout time.Duration) *APIHandler {
+func NewAPIHandler(hm *gorpc.HandlersManager, cache cache.ICache, callbacks APIHandlerCallbacks) *APIHandler {
 	return &APIHandler{
 		hm:        hm,
 		cache:     cache,
 		callbacks: callbacks,
-		timeout:   timeout,
 	}
 }
 
@@ -387,6 +386,7 @@ func (h *APIHandler) writeTimeoutError(ctx context.Context, r *http.Request, w h
 	h.writeError(ctx, w, err.UserMessage(), http.StatusServiceUnavailable)
 }
 
-func (h *APIHandler) SetTimeout(timeout time.Duration) {
+func (h *APIHandler) SetTimeout(timeout time.Duration) *APIHandler {
 	h.timeout = timeout
+	return h
 }
