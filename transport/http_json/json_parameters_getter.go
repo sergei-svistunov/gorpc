@@ -176,6 +176,8 @@ func (p *JsonParametersGetter) get(path []string, name string) (interface{}, boo
 	var m interface{}
 	m = p.values
 
+	//println(strings.Join(path, "/"), name)
+
 	for _, key := range append(path, name) {
 		switch v := m.(type) {
 		case map[string]interface{}:

@@ -77,3 +77,45 @@ func TestHandlerManager_PrepareParameters_SliceInSlice(t *testing.T) {
 		t.Fatalf("Error in parsing slice in slice")
 	}
 }
+
+func TestHandlerManager_PrepareParameters_V6(t *testing.T) {
+	hm := gorpc.NewHandlersManager("github.com/sergei-svistunov/gorpc", gorpc.HandlersManagerCallbacks{})
+	hm.RegisterHandler(handler1.NewHandler())
+
+	jsonReq := `
+		{
+			"f1": [
+				[
+					{
+						"f11": {
+							"f111": "test"
+						}
+					}
+				]
+			]
+		}`
+
+	var jsonValues map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonReq), &jsonValues); err != nil {
+		t.Fatal(err)
+	}
+
+	pg := &JsonParametersGetter{
+		values: jsonValues,
+	}
+
+	hanlderVersion := hm.FindHandler("/test/handler1", 6)
+	if hanlderVersion == nil {
+		t.Fatal("Handler wasn't found")
+	}
+
+	v, err := hm.UnmarshalParameters(context.TODO(), hanlderVersion, pg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	arr := *(v.Interface().(*handler1.V6Request).F1)
+	if *(arr[0][0].F11.F111) != "test" {
+		t.Fatalf("Error in parsing V6")
+	}
+}

@@ -530,7 +530,12 @@ func unmarshalParameters(res reflect.Value, handlerParameters IHandlerParameters
 			t = t.Elem()
 		}
 		if t.Kind() == reflect.Struct {
-			err := unmarshalParameters(structField, handlerParameters, param.Fields, param.RawType)
+			fields := make([]HandlerParameter, len(param.Fields))
+			copy(fields, param.Fields)
+			for i := range fields {
+				fields[i].Path = append(param.Path, param.Key)
+			}
+			err := unmarshalParameters(structField, handlerParameters, fields, param.RawType)
 			if err != nil {
 				return err
 			}
