@@ -11,6 +11,7 @@ var mainImports = []string{
 	"strings",
 	"time",
 	"golang.org/x/net/context",
+	"compress/gzip",
 }
 
 var mainTemplate = []byte(`
@@ -32,6 +33,8 @@ type Callbacks struct {
 	OnError          func(ctx context.Context, req *http.Request, err error)
 	OnPanic          func(ctx context.Context, req *http.Request, r interface{}, trace []byte)
 	OnFinish         func(ctx context.Context, req *http.Request, startTime time.Time)
+	OnCacheHit       func(ctx context.Context, entry *CacheEntry)
+	OnCacheMiss      func(ctx context.Context)
 }
 
 type >>>API_NAME<<< struct {
@@ -39,6 +42,7 @@ type >>>API_NAME<<< struct {
 	serviceName string
 	balancer    IBalancer
 	callbacks   Callbacks
+	cache       ICache
 }
 
 func New>>>API_NAME<<<(client *http.Client, balancer IBalancer, callbacks Callbacks) *>>>API_NAME<<< {
@@ -60,6 +64,11 @@ func New>>>API_NAME<<<(client *http.Client, balancer IBalancer, callbacks Callba
 	}
 }
 
+func (api *>>>API_NAME<<<) SetCache(c ICache) *>>>API_NAME<<< {
+	api.cache = c
+	return api
+}
+
 >>>CLIENT_API<<<
 
 // TODO: duplicates http_json.httpSessionResponse
@@ -67,6 +76,66 @@ type httpSessionResponse struct {
 	Result string      ` + "`" + `json:"result"` + "`" + ` //OK or ERROR
 	Data   json.RawMessage ` + "`" + `json:"data"` + "`" + `
 	Error  string      ` + "`" + `json:"error"` + "`" + `
+}
+
+func createCacheEntry(data interface{}) (*CacheEntry, error) {
+	content, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	cacheEntry := CacheEntry{
+		Content: content,
+	}
+	if len(content) > 1024 {
+		buf := new(bytes.Buffer)
+		gzipWriter := gzip.NewWriter(buf)
+		gzipWriter.Write(content)
+		gzipWriter.Close()
+		cacheEntry.CompressedContent = buf.Bytes()
+	}
+	return &cacheEntry, nil
+}
+
+func unmarshalCacheEntry(cacheEntry *CacheEntry, buf interface{}) (err error) {
+	if cacheEntry.Content == nil && cacheEntry.CompressedContent != nil {
+		gzipReader, _ := gzip.NewReader(bytes.NewReader(cacheEntry.CompressedContent))
+		cacheEntry.Content, err = ioutil.ReadAll(gzipReader)
+		gzipReader.Close()
+	}
+	err = json.Unmarshal(cacheEntry.Content, buf)
+	return
+}
+
+func (api *>>>API_NAME<<<)setWithCache(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[string]int) error {
+	if IsCacheEnabled(ctx) {
+		cacheKey := getCacheKey(path, data)
+		if cacheKey != nil {
+			api.cache.Lock(cacheKey)
+			defer api.cache.Unlock(cacheKey)
+			cacheEntry := api.cache.Get(cacheKey)
+			if cacheEntry != nil {
+				if api.callbacks.OnCacheHit != nil {
+					api.callbacks.OnCacheHit(ctx, cacheEntry)
+				}
+				return unmarshalCacheEntry(cacheEntry, buf)
+			}
+			if api.callbacks.OnCacheMiss != nil {
+				api.callbacks.OnCacheMiss(ctx)
+			}
+
+			if err := api.set(ctx, path, data, buf, handlerErrors); err != nil {
+				return err
+			}
+			if cacheEntry, err := createCacheEntry(buf); err == nil {
+				api.cache.Put(cacheKey, cacheEntry)
+			} else {
+				return err
+			}
+
+			return nil
+		}
+	}
+	return api.set(ctx, path, data, buf, handlerErrors)
 }
 
 func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[string]int) (err error) {
@@ -240,12 +309,80 @@ type ServiceError struct {
 func (err *ServiceError) Error() string {
 	return err.Message
 }
+
+type Config struct {
+	useCache bool
+}
+
+type key int
+
+var configKey key = 0
+
+func EnableCache(ctx context.Context) context.Context {
+	var c *Config
+	if c, ok := fromContext(ctx); !ok {
+		c = &Config{true}
+		return newContext(ctx, c)
+	}
+	c.useCache = true
+	return ctx
+}
+
+func DisableCache(ctx context.Context) {
+	if c, ok := fromContext(ctx); ok {
+		c.useCache = false
+	}
+}
+
+func IsCacheEnabled(ctx context.Context) bool {
+	if c, ok := fromContext(ctx); ok && c.useCache {
+		return true
+	}
+	return false
+}
+
+func newContext(ctx context.Context, u *Config) context.Context {
+	return context.WithValue(ctx, configKey, u)
+}
+
+func fromContext(ctx context.Context) (*Config, bool) {
+	c, ok := ctx.Value(configKey).(*Config)
+	return c, ok
+}
+
+func getCacheKey(route string, params interface{}) []byte {
+	buf := bytes.NewBufferString(route)
+	encoder := json.NewEncoder(buf)
+	err := encoder.Encode(params)
+	if err != nil {
+		return nil
+	}
+	return buf.Bytes()
+}
+
+type ICache interface {
+	Get(key []byte) *CacheEntry
+	Put(key []byte, entry *CacheEntry)
+
+	ICacheLocker
+}
+
+type ICacheLocker interface {
+	Lock(key []byte)
+	Unlock(key []byte)
+}
+
+type CacheEntry struct {
+	Content           []byte
+	CompressedContent []byte
+	Hash              string
+}
 `)
 
 var handlerCallPostFuncTemplate = []byte(`
 func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context, options >>>INPUT_TYPE<<<) (>>>RETURNED_TYPE<<<, error) {
     var result >>>RETURNED_TYPE<<<
-    err := api.set(ctx, ">>>HANDLER_PATH<<<", options, &result, >>>HANDLER_ERRORS<<<)
+    err := api.setWithCache(ctx, ">>>HANDLER_PATH<<<", options, &result, >>>HANDLER_ERRORS<<<)
 	return result, err
 }
 `)
