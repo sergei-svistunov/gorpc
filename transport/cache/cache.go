@@ -18,4 +18,5 @@ type CacheEntry struct {
 	Content           []byte
 	CompressedContent []byte
 	Hash              string
+	Body              interface{}
 }
