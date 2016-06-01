@@ -11,6 +11,7 @@ var mainImports = []string{
 	"strings",
 	"time",
 	"golang.org/x/net/context",
+	"github.com/sergei-svistunov/gorpc/transport/cache",
 }
 
 var mainTemplate = []byte(`
@@ -39,6 +40,12 @@ type >>>API_NAME<<< struct {
 	serviceName string
 	balancer    IBalancer
 	callbacks   Callbacks
+	cache       cache.ICache
+}
+
+func (api *>>>API_NAME<<<) SetCache(c cache.ICache) *>>>API_NAME<<< {
+	api.cache = c
+	return api
 }
 
 func New>>>API_NAME<<<(client *http.Client, balancer IBalancer, callbacks Callbacks) *>>>API_NAME<<< {
@@ -141,6 +148,27 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	return nil
 }
 
+func (api *>>>API_NAME<<<) setWithCache(ctx context.Context, path string, data interface{}, entry *cache.CacheEntry, handlerErrors map[string]int) error {
+	if api.cache != nil && IsCacheEnabled(ctx) {
+		cacheKey := getCacheKey(path, data)
+		if cacheKey != nil {
+			api.cache.Lock(cacheKey)
+			defer api.cache.Unlock(cacheKey)
+			cacheEntry := api.cache.Get(cacheKey)
+			if cacheEntry != nil && cacheEntry.Body != nil {
+				*entry = *cacheEntry
+				return nil
+			}
+			if err := api.set(ctx, path, data, entry.Body, handlerErrors); err != nil {
+				return err
+			}
+			api.cache.Put(cacheKey, entry)
+			return nil
+		}
+	}
+	return api.set(ctx, path, data, entry.Body, handlerErrors)
+}
+
 func createRawURL(url, path string, values url.Values) string {
 	var buf bytes.Buffer
 	buf.WriteString(strings.TrimRight(url, "/"))
@@ -240,12 +268,66 @@ type ServiceError struct {
 func (err *ServiceError) Error() string {
 	return err.Message
 }
+
+type config struct {
+	useCache bool
+}
+
+type key int
+
+var configKey key
+
+func EnableCache(ctx context.Context) context.Context {
+	if c, ok := fromContext(ctx); ok {
+		c.useCache = true
+	} else {
+		c = &config{true}
+		ctx = newContext(ctx, c)
+	}
+	return ctx
+}
+
+func DisableCache(ctx context.Context) {
+	if c, ok := fromContext(ctx); ok {
+		c.useCache = false
+	}
+}
+
+func IsCacheEnabled(ctx context.Context) bool {
+	if c, ok := fromContext(ctx); ok && c.useCache {
+		return true
+	}
+	return false
+}
+
+func newContext(ctx context.Context, u *config) context.Context {
+	return context.WithValue(ctx, configKey, u)
+}
+
+func fromContext(ctx context.Context) (*config, bool) {
+	c, ok := ctx.Value(configKey).(*config)
+	return c, ok
+}
+
+func getCacheKey(route string, params interface{}) []byte {
+	buf := bytes.NewBufferString(route)
+	encoder := json.NewEncoder(buf)
+	err := encoder.Encode(params)
+	if err != nil {
+		return nil
+	}
+	return buf.Bytes()
+}
 `)
 
 var handlerCallPostFuncTemplate = []byte(`
 func (api *>>>API_NAME<<<) >>>HANDLER_NAME<<<(ctx context.Context, options >>>INPUT_TYPE<<<) (>>>RETURNED_TYPE<<<, error) {
-    var result >>>RETURNED_TYPE<<<
-    err := api.set(ctx, ">>>HANDLER_PATH<<<", options, &result, >>>HANDLER_ERRORS<<<)
+	var result >>>RETURNED_TYPE<<<
+	var entry = cache.CacheEntry{Body: &result}
+	err := api.setWithCache(ctx, ">>>HANDLER_PATH<<<", options, &entry, >>>HANDLER_ERRORS<<<)
+	if result, ok := entry.Body.(*>>>RETURNED_TYPE<<<); ok {
+		return *result, err
+	}
 	return result, err
 }
 `)
