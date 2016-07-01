@@ -278,19 +278,17 @@ type key int
 var configKey key
 
 func EnableCache(ctx context.Context) context.Context {
-	if c, ok := fromContext(ctx); ok {
-		c.useCache = true
-	} else {
-		c = &config{true}
-		ctx = newContext(ctx, c)
+	if c, ok := fromContext(ctx); !ok || !c.useCache {
+		return newContext(ctx, &config{true})
 	}
 	return ctx
 }
 
-func DisableCache(ctx context.Context) {
-	if c, ok := fromContext(ctx); ok {
-		c.useCache = false
+func DisableCache(ctx context.Context) context.Context {
+	if c, ok := fromContext(ctx); ok && c.useCache {
+		ctx = newContext(ctx, &config{false})
 	}
+	return ctx
 }
 
 func IsCacheEnabled(ctx context.Context) bool {

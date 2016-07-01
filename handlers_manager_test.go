@@ -111,9 +111,11 @@ func (s *HandlersManagerSuite) TestHandlerManager_CallHandler1V1_ReturnResult() 
 	params, err := s.hm.UnmarshalParameters(context.TODO(), hanlerVersion, pg)
 	s.NoError(err)
 
-	res, err := s.hm.CallHandler(context.TODO(), hanlerVersion, params)
-	s.NoError(err)
-	s.Equal(&test_handler1.V1Res{"Test", 123}, res)
+	if res, err := s.hm.CallHandler(context.TODO(), hanlerVersion, params); err != nil {
+		s.Fail("error: %s", err.Error())
+	} else {
+		s.Equal(&test_handler1.V1Res{"Test", 123}, res)
+	}
 }
 
 func (s *HandlersManagerSuite) TestHandlerManager_PrepareParametersWithError() {
