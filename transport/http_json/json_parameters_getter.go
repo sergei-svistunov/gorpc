@@ -3,6 +3,7 @@ package http_json
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 )
@@ -16,17 +17,31 @@ type JsonParametersGetter struct {
 }
 
 func (p *JsonParametersGetter) Parse() error {
+	defer p.Req.Close()
+
 	if p.values != nil {
 		return nil
 	}
-	defer p.Req.Close()
+
 	if p.MaxFormSize == 0 {
 		p.MaxFormSize = defaultMaxFormSize
 	}
+
 	reader := io.LimitReader(p.Req, p.MaxFormSize)
+
 	decoder := json.NewDecoder(reader)
 	decoder.UseNumber()
-	return decoder.Decode(&p.values)
+
+	err := decoder.Decode(&p.values)
+	if err != nil {
+		if err == io.ErrUnexpectedEOF {
+			return fmt.Errorf("Request entity too large. It must be less than %.1f Kb", float64(p.MaxFormSize)/1024)
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (p *JsonParametersGetter) Fork(values map[string]interface{}) interface{} {
