@@ -293,12 +293,13 @@ func (h *APIHandler) createCacheEntry(ctx context.Context, resp *httpSessionResp
 	cacheEntry := cache.CacheEntry{
 		Content: content,
 	}
-	if len(content) > 1024 && (cacheKey != nil || strings.Contains(req.Header.Get("Accept-Encoding"), "gzip")) {
+	if len(content) > 4096 && (cacheKey != nil || strings.Contains(req.Header.Get("Accept-Encoding"), "gzip")) {
 		buf := new(bytes.Buffer)
-		gzipWriter := gzip.NewWriter(buf)
-		gzipWriter.Write(content)
-		gzipWriter.Close()
-		cacheEntry.CompressedContent = buf.Bytes()
+		if gzipWriter, err := gzip.NewWriterLevel(buf, gzip.BestSpeed); err == nil {
+			gzipWriter.Write(content)
+			gzipWriter.Close()
+			cacheEntry.CompressedContent = buf.Bytes()
+		}
 	}
 	return &cacheEntry, nil
 }
