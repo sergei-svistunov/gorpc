@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/net/context"
+	"context"
 	"io/ioutil"
 	"net/http"
 	"net/url"

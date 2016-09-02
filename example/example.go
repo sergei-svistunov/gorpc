@@ -11,7 +11,7 @@ import (
 	"github.com/sergei-svistunov/gorpc/transport/http_json"
 	http_json_adapter "github.com/sergei-svistunov/gorpc/transport/http_json/adapter"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 //go:generate curl "http://localhost:8080/client.go?service_name=example&package=client" --output client/client.go --create-dirs --silent --show-error

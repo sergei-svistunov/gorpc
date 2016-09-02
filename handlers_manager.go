@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 var isSamePackagePathException = map[string]bool{"time": true}
@@ -129,8 +129,8 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		}
 
 		ctxType := vMethodType.Type.In(1)
-		if ctxType.Kind() != reflect.Interface || !strings.HasSuffix(ctxType.PkgPath(), "golang.org/x/net/context") || ctxType.Name() != "Context" {
-			return fmt.Errorf("Invalid prototype for version number %d of handler %s. First argument must be \"Context\" from package \"golang.org/x/net/context\"", handlerVersion, handlerPath)
+		if ctxType.Kind() != reflect.Interface || !strings.HasSuffix(ctxType.PkgPath(), "context") || ctxType.Name() != "Context" {
+			return fmt.Errorf("Invalid prototype for version number %d of handler %s. First argument must be \"Context\" from package \"context\"", handlerVersion, handlerPath)
 		}
 
 		paramsType := vMethodType.Type.In(2)

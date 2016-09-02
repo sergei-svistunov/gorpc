@@ -1,7 +1,7 @@
 package debug
 
 import (
-	"golang.org/x/net/context"
+	"context"
 )
 
 const DebugContextKey = "debug"

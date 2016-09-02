@@ -10,7 +10,7 @@ var mainImports = []string{
 	"runtime",
 	"strings",
 	"time",
-	"golang.org/x/net/context",
+	"context",
 	"github.com/sergei-svistunov/gorpc/transport/cache",
 	"github.com/mailru/easyjson",
 }

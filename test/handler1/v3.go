@@ -1,7 +1,7 @@
 package handler1
 
 import (
-	"golang.org/x/net/context"
+	"context"
 	"time"
 )
 
