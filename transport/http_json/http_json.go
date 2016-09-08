@@ -283,10 +283,6 @@ func (h *APIHandler) getCacheKey(ctx context.Context, req *http.Request, handler
 }
 
 func (h *APIHandler) createCacheEntry(ctx context.Context, resp *httpSessionResponse, cacheKey []byte, req *http.Request) (*cache.CacheEntry, *gorpc.CallHandlerError) {
-	if cacheKey == nil {
-		return nil, nil
-	}
-
 	content, err := json.Marshal(resp)
 	if err != nil {
 		return nil, &gorpc.CallHandlerError{
@@ -297,7 +293,7 @@ func (h *APIHandler) createCacheEntry(ctx context.Context, resp *httpSessionResp
 	cacheEntry := cache.CacheEntry{
 		Content: content,
 	}
-	if len(content) > 4096 && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
+	if len(content) > 4096 && cacheKey != nil && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
 		buf := new(bytes.Buffer)
 		if gzipWriter, err := gzip.NewWriterLevel(buf, gzip.BestSpeed); err == nil {
 			gzipWriter.Write(content)
