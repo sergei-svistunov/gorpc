@@ -149,7 +149,7 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 }
 
 func (api *>>>API_NAME<<<) setWithCache(ctx context.Context, path string, data interface{}, entry *cache.CacheEntry, handlerErrors map[string]int) error {
-	if api.cache != nil && IsCacheEnabled(ctx) {
+	if api.cache != nil && cache.IsTransportCacheEnabled(ctx) {
 		cacheKey := getCacheKey(path, data)
 		if cacheKey != nil {
 			api.cache.Lock(cacheKey)
@@ -267,44 +267,6 @@ type ServiceError struct {
 // Error method for implementing common error interface
 func (err *ServiceError) Error() string {
 	return err.Message
-}
-
-type config struct {
-	useCache bool
-}
-
-type key int
-
-var configKey key
-
-func EnableCache(ctx context.Context) context.Context {
-	if c, ok := fromContext(ctx); !ok || !c.useCache {
-		return newContext(ctx, &config{true})
-	}
-	return ctx
-}
-
-func DisableCache(ctx context.Context) context.Context {
-	if c, ok := fromContext(ctx); ok && c.useCache {
-		ctx = newContext(ctx, &config{false})
-	}
-	return ctx
-}
-
-func IsCacheEnabled(ctx context.Context) bool {
-	if c, ok := fromContext(ctx); ok && c.useCache {
-		return true
-	}
-	return false
-}
-
-func newContext(ctx context.Context, u *config) context.Context {
-	return context.WithValue(ctx, configKey, u)
-}
-
-func fromContext(ctx context.Context) (*config, bool) {
-	c, ok := ctx.Value(configKey).(*config)
-	return c, ok
 }
 
 func getCacheKey(route string, params interface{}) []byte {

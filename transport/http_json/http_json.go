@@ -71,10 +71,10 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ctx = context.Background()
 	}
 
+	ctx = cache.NewContext(ctx)
 	if h.callbacks.OnInitCtx != nil {
 		ctx = h.callbacks.OnInitCtx(ctx, req)
 	}
-	ctx = cache.NewContext(ctx)
 
 	if h.callbacks.OnStartServing != nil {
 		h.callbacks.OnStartServing(ctx, req)
@@ -206,7 +206,7 @@ func (h *APIHandler) parseRequest(ctx context.Context, req *http.Request) (gorpc
 
 func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (cacheEntry *cache.CacheEntry, err *gorpc.CallHandlerError) {
 	cacheKey := h.getCacheKey(ctx, req, handler, params)
-	if cacheKey == nil {
+	if cacheKey == nil || cache.IsDebug(ctx) {
 		return h.callHandler(ctx, cacheKey, resp, req, handler, params)
 	}
 
