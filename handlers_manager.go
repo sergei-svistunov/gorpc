@@ -10,7 +10,9 @@ import (
 	"strings"
 	"unicode"
 
+	"encoding/json"
 	"golang.org/x/net/context"
+	"net/http"
 )
 
 var isSamePackagePathException = map[string]bool{"time": true}
@@ -42,6 +44,12 @@ type HandlersManager struct {
 	handlerVersions map[string]*handlerVersion
 	handlersPath    string
 	callbacks       HandlersManagerCallbacks
+}
+
+type Caller interface {
+	VersionAvailable(version string) bool
+	Call(ctx context.Context, version string, params interface{}, req *http.Request) (context.Context, json.Marshaler, error)
+	UnmarshalRequest(*http.Request) (interface{}, error)
 }
 
 func NewHandlersManager(handlersPath string, callbacks HandlersManagerCallbacks) *HandlersManager {
@@ -416,6 +424,13 @@ func (hm *HandlersManager) FindHandlerByRoute(route string) HandlerVersion {
 	return hm.handlerVersions[route]
 }
 
+func (hm *HandlersManager) CallerFromHandlerVersion(h HandlerVersion) Caller {
+	if c, ok := h.handlerStruct.(Caller); ok && c.VersionAvailable(h.Version) {
+		return c
+	}
+	return nil
+}
+
 func (*HandlersManager) UnmarshalParameters(ctx context.Context, handler HandlerVersion,
 	handlerParameters IHandlerParameters) (reflect.Value, error) {
 	return unmarshalRequest(handler.Request, handlerParameters)
@@ -434,8 +449,28 @@ func unmarshalRequest(request *handlerRequest, handlerParameters IHandlerParamet
 	return resPtr, nil
 }
 
-func (hm *HandlersManager) CallHandler(ctx context.Context, handler HandlerVersion, params reflect.Value) (interface{}, *CallHandlerError) {
-	in := []reflect.Value{reflect.ValueOf(handler.handlerStruct), reflect.ValueOf(ctx), params}
+func (hm *HandlersManager) CallHandler(ctx context.Context, handler HandlerVersion, params interface{}, req *http.Request) (interface{}, *CallHandlerError) {
+	if c := hm.CallerFromHandlerVersion(handler); c != nil {
+		ctx, val, err := c.Call(ctx, handler.Version, params, req)
+		if err != nil {
+			if callback := hm.callbacks.OnError; callback != nil {
+				callback(ctx, err)
+			}
+			return nil, processError(err)
+		} else {
+			if callback := hm.callbacks.OnSuccess; callback != nil {
+				callback(ctx, val)
+			}
+			return val, nil
+		}
+	}
+
+	in := []reflect.Value{reflect.ValueOf(handler.handlerStruct), reflect.ValueOf(ctx)}
+	if args, ok := params.(reflect.Value); ok {
+		in = append(in, args)
+	} else {
+		in = append(in, reflect.ValueOf(args))
+	}
 
 	if callback := hm.callbacks.AppendInParams; callback != nil {
 		var err error
@@ -468,13 +503,17 @@ func (hm *HandlersManager) CallHandler(ctx context.Context, handler HandlerVersi
 		callback(ctx, err)
 	}
 
+	return nil, processError(err)
+}
+
+func processError(err error) *CallHandlerError {
 	switch internalErr := err.(type) {
 	case *HandlerError:
-		return nil, &CallHandlerError{ErrorReturnedFromCall, err}
+		return &CallHandlerError{ErrorReturnedFromCall, err}
 	case *CallHandlerError:
-		return nil, internalErr
+		return internalErr
 	default:
-		return nil, &CallHandlerError{ErrorUnknown, err}
+		return &CallHandlerError{ErrorUnknown, err}
 	}
 }
 
