@@ -21,6 +21,7 @@ import (
 
 var PrintDebug = false
 
+//easyjson:json
 type httpSessionResponse struct {
 	Result string       `json:"result"`
 	Data   interface{}  `json:"data"`
@@ -283,7 +284,7 @@ func (h *APIHandler) getCacheKey(ctx context.Context, req *http.Request, handler
 }
 
 func (h *APIHandler) createCacheEntry(ctx context.Context, resp *httpSessionResponse, cacheKey []byte, req *http.Request) (*cache.CacheEntry, *gorpc.CallHandlerError) {
-	content, err := json.Marshal(resp)
+	content, err := resp.MarshalJSON()
 	if err != nil {
 		return nil, &gorpc.CallHandlerError{
 			Type: gorpc.ErrorWriteResponse,
