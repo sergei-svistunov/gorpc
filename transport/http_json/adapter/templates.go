@@ -81,9 +81,8 @@ type httpSessionResponse struct {
 func unmarshal(data []byte, r interface{}) error {
 	if m, ok := r.(easyjson.Unmarshaler); ok {
 		return easyjson.Unmarshal(data, m)
-	} else {
-		return json.Unmarshal(data, r)
 	}
+	return json.Unmarshal(data, r)
 }
 
 func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{}, buf interface{}, handlerErrors map[string]int) (err error) {
