@@ -112,12 +112,12 @@ func (g *HttpJsonLibGenerator) generateAPI() ([]byte, error) {
 }
 
 func (g *HttpJsonLibGenerator) printHandlerInOutTypes(w io.Writer, in, out reflect.Type) (inTypeName string, outTypeName string, err error) {
-	inTypeName, err = g.convertStructToCode(w, in)
+	inTypeName, err = g.convertStructToCode(w, in, true)
 	if err != nil {
 		return
 	}
 
-	outTypeName, err = g.convertStructToCode(w, out)
+	outTypeName, err = g.convertStructToCode(w, out, true)
 	if err != nil {
 		return
 	}
@@ -157,7 +157,7 @@ func (g *HttpJsonLibGenerator) needToMigratePkgStructs(pkgPath string) bool {
 	return pkgPath != ""
 }
 
-func (g *HttpJsonLibGenerator) convertStructToCode(w io.Writer, t reflect.Type) (typeName string, err error) {
+func (g *HttpJsonLibGenerator) convertStructToCode(w io.Writer, t reflect.Type, ej bool) (typeName string, err error) {
 	if name, ok := g.convertedStructs[t]; ok {
 		return name, nil
 	}
@@ -176,7 +176,7 @@ func (g *HttpJsonLibGenerator) convertStructToCode(w io.Writer, t reflect.Type) 
 
 	defer func() {
 		for _, newType := range newInternalTypes {
-			if _, err = g.convertStructToCode(w, newType); err != nil {
+			if _, err = g.convertStructToCode(w, newType, false); err != nil {
 				return
 			}
 		}
@@ -184,6 +184,9 @@ func (g *HttpJsonLibGenerator) convertStructToCode(w io.Writer, t reflect.Type) 
 
 	switch t.Kind() {
 	case reflect.Struct:
+		if ej {
+			w.Write([]byte("\n// easyjson:json\n"))
+		}
 		str := "type " + typeName + " struct {\n"
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
@@ -200,6 +203,9 @@ func (g *HttpJsonLibGenerator) convertStructToCode(w io.Writer, t reflect.Type) 
 				jsonTag := field.Tag.Get("json")
 				if jsonTag == "" {
 					jsonTag = field.Tag.Get("key")
+					if field.Type.Kind() == reflect.Ptr {
+						jsonTag += ",omitempty"
+					}
 				}
 				if jsonTag != "" {
 					str += (" `json:\"" + jsonTag + "\"`")
@@ -214,12 +220,15 @@ func (g *HttpJsonLibGenerator) convertStructToCode(w io.Writer, t reflect.Type) 
 
 		return
 	case reflect.Ptr:
-		return g.convertStructToCode(w, t.Elem())
+		return g.convertStructToCode(w, t.Elem(), ej)
 	case reflect.Slice:
 		var elemType string
-		elemType, err = g.convertStructToCode(w, t.Elem())
+		elemType, err = g.convertStructToCode(w, t.Elem(), false)
 		if err != nil {
 			return
+		}
+		if ej {
+			w.Write([]byte("\n// easyjson:json\n"))
 		}
 		sliceType := "[]" + elemType
 		if typeName != sliceType {
@@ -228,8 +237,8 @@ func (g *HttpJsonLibGenerator) convertStructToCode(w io.Writer, t reflect.Type) 
 
 		return
 	case reflect.Map:
-		keyType, _ := g.convertStructToCode(w, t.Key())
-		valType, _ := g.convertStructToCode(w, t.Elem())
+		keyType, _ := g.convertStructToCode(w, t.Key(), false)
+		valType, _ := g.convertStructToCode(w, t.Elem(), false)
 
 		mapName := "map[" + keyType + "]" + valType
 		if typeName != mapName {
@@ -267,6 +276,11 @@ func (g *HttpJsonLibGenerator) migratedStructName(t reflect.Type) string {
 }
 
 func (g *HttpJsonLibGenerator) detectTypeName(t reflect.Type) (name string, newTypes []reflect.Type) {
+	defer func() {
+		if t.Kind() == reflect.Ptr {
+			name = "*" + name
+		}
+	}()
 	name = t.Name()
 	if name != "" {
 		// for custom types make unique names using package path
