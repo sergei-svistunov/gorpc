@@ -28,12 +28,13 @@ type IBalancer interface {
 }
 
 type Callbacks struct {
-	OnStart          func(ctx context.Context, req *http.Request) context.Context
-	OnPrepareRequest func(ctx context.Context, req *http.Request, data interface{}) context.Context
-	OnSuccess        func(ctx context.Context, req *http.Request, data interface{})
-	OnError          func(ctx context.Context, req *http.Request, err error)
-	OnPanic          func(ctx context.Context, req *http.Request, r interface{}, trace []byte)
-	OnFinish         func(ctx context.Context, req *http.Request, startTime time.Time)
+	OnStart                func(ctx context.Context, req *http.Request) context.Context
+	OnPrepareRequest       func(ctx context.Context, req *http.Request, data interface{}) context.Context
+	OnResponseUnmarshaling func(ctx context.Context, req *http.Request, response *http.Response, result []byte)
+	OnSuccess              func(ctx context.Context, req *http.Request, data interface{})
+	OnError                func(ctx context.Context, req *http.Request, err error)
+	OnPanic                func(ctx context.Context, req *http.Request, r interface{}, trace []byte)
+	OnFinish               func(ctx context.Context, req *http.Request, startTime time.Time)
 }
 
 type >>>API_NAME<<< struct {
@@ -149,7 +150,8 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 		ctx = api.callbacks.OnPrepareRequest(ctx, req, data)
 	}
 
-	if err := doRequest(ctx, api.client, req, buf, handlerErrors); err != nil {
+	if err := api.doRequest(ctx, req, buf, handlerErrors); err != nil {
+		err = fmt.Errorf("%s: %s", api.serviceName, err)
 		if api.callbacks.OnError != nil {
 			api.callbacks.OnError(ctx, req, err)
 		}
@@ -198,8 +200,8 @@ func createRawURL(url, path string, values url.Values) string {
 	return buf.String()
 }
 
-func doRequest(ctx context.Context, client *http.Client, request *http.Request, buf interface{}, handlerErrors map[string]int) error {
-	return HTTPDo(ctx, client, request, func(response *http.Response, err error) error {
+func (api *>>>API_NAME<<<) doRequest(ctx context.Context, request *http.Request, buf interface{}, handlerErrors map[string]int) error {
+	return HTTPDo(ctx, api.client, request, func(response *http.Response, err error) error {
 		// Run
 		if err != nil {
 			return err
@@ -224,6 +226,10 @@ func doRequest(ctx context.Context, client *http.Client, request *http.Request, 
 		result, err := ioutil.ReadAll(response.Body)
 		if err != nil {
 			return err
+		}
+
+		if api.callbacks.OnResponseUnmarshaling != nil {
+			api.callbacks.OnResponseUnmarshaling(ctx, request, response, result)
 		}
 
 		var mainResp httpSessionResponse

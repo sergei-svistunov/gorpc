@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/sergei-svistunov/gorpc"
+	"sort"
 )
 
 type HttpJsonLibGenerator struct {
@@ -79,11 +80,26 @@ func GetAPIName(serviceName string) string {
 	return buf.String()
 }
 
+type byString []string
+
+func (v byString) Len() int {
+	return len(v)
+}
+
+func (v byString) Swap(i, j int) {
+	v[i], v[j] = v[j], v[i]
+}
+
+func (v byString) Less(i, j int) bool {
+	return strings.Compare(v[i], v[j]) == -1
+}
+
 func (g *HttpJsonLibGenerator) generateAPI() ([]byte, error) {
 	var result bytes.Buffer
 	var typesBuf bytes.Buffer
-
-	for _, path := range g.hm.GetHandlersPaths() {
+	paths := g.hm.GetHandlersPaths()
+	sort.Sort(byString(paths))
+	for _, path := range paths {
 		info := g.hm.GetHandlerInfo(path)
 		for _, v := range info.Versions {
 			inTypeName, outTypeName, err := g.printHandlerInOutTypes(&typesBuf, v.Request.Type, v.Response)
