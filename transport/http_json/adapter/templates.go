@@ -178,7 +178,12 @@ func (api *>>>API_NAME<<<) setWithCache(ctx context.Context, path string, data i
 			if err := api.set(ctx, path, data, entry.Body, handlerErrors); err != nil {
 				return err
 			}
-			api.cache.Put(cacheKey, entry)
+			ttl := cache.TTL(ctx)
+			if p, ok := api.cache.(cache.TTLAwarePutter); ok && ttl > 0 {
+				p.PutWithTTL(cacheKey, entry, ttl)
+			} else {
+				api.cache.Put(cacheKey, entry)
+			}
 			return nil
 		}
 	}

@@ -1,5 +1,7 @@
 package cache
 
+import "time"
+
 type ICache interface {
 	// Get returns response (response's content, compressed) by key
 	Get(key []byte) *CacheEntry
@@ -7,6 +9,11 @@ type ICache interface {
 	Put(key []byte, entry *CacheEntry)
 
 	ICacheLocker
+}
+
+type TTLAwareCachePutter interface {
+	// Put puts response in cache with specified ttl
+	PutWithTTL(key []byte, entry *CacheEntry, ttl time.Duration)
 }
 
 type ICacheLocker interface {
