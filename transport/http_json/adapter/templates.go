@@ -179,7 +179,7 @@ func (api *>>>API_NAME<<<) setWithCache(ctx context.Context, path string, data i
 				return err
 			}
 			ttl := cache.TTL(ctx)
-			if p, ok := api.cache.(cache.TTLAwarePutter); ok && ttl > 0 {
+			if p, ok := api.cache.(cache.TTLAwareCachePutter); ok && ttl > 0 {
 				p.PutWithTTL(cacheKey, entry, ttl)
 			} else {
 				api.cache.Put(cacheKey, entry)
