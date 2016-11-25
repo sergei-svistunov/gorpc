@@ -32,8 +32,8 @@ type Callbacks struct {
 	OnPrepareRequest       func(ctx context.Context, req *http.Request, data interface{}) context.Context
 	OnResponseUnmarshaling func(ctx context.Context, req *http.Request, response *http.Response, result []byte)
 	OnSuccess              func(ctx context.Context, req *http.Request, data interface{})
-	OnError                func(ctx context.Context, req *http.Request, err error)
-	OnPanic                func(ctx context.Context, req *http.Request, r interface{}, trace []byte)
+	OnError                func(ctx context.Context, req *http.Request, err error) error
+	OnPanic                func(ctx context.Context, req *http.Request, r interface{}, trace []byte) error
 	OnFinish               func(ctx context.Context, req *http.Request, startTime time.Time)
 }
 
@@ -109,7 +109,7 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 
 			err = fmt.Errorf("panic while calling %q service: %v", api.serviceName, r)
 			if api.callbacks.OnPanic != nil {
-				api.callbacks.OnPanic(ctx, req, r, trace)
+				err = api.callbacks.OnPanic(ctx, req, r, trace)
 			}
 		}
 	}()
@@ -118,7 +118,7 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	if err != nil {
 		err = fmt.Errorf("could not locate service '%s': %v", api.serviceName, err)
 		if api.callbacks.OnError != nil {
-			api.callbacks.OnError(ctx, req, err)
+			err = api.callbacks.OnError(ctx, req, err)
 		}
 		return err
 	}
@@ -131,9 +131,9 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 		err = encoder.Encode(data)
 	}
 	if err != nil {
-		err = fmt.Errorf("%s: could not marshal data %+v: %v", api.serviceName, data, err)
+		err = fmt.Errorf("could not marshal data %+v: %v", data, err)
 		if api.callbacks.OnError != nil {
-			api.callbacks.OnError(ctx, req, err)
+			err = api.callbacks.OnError(ctx, req, err)
 		}
 		return err
 	}
@@ -141,7 +141,7 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	req, err = http.NewRequest("POST", createRawURL(apiURL, path, nil), b)
 	if err != nil {
 		if api.callbacks.OnError != nil {
-			api.callbacks.OnError(ctx, req, err)
+			err = api.callbacks.OnError(ctx, req, err)
 		}
 		return err
 	}
@@ -151,9 +151,8 @@ func (api *>>>API_NAME<<<) set(ctx context.Context, path string, data interface{
 	}
 
 	if err := api.doRequest(ctx, req, buf, handlerErrors); err != nil {
-		err = fmt.Errorf("%s: %s", api.serviceName, err)
 		if api.callbacks.OnError != nil {
-			api.callbacks.OnError(ctx, req, err)
+			err = api.callbacks.OnError(ctx, req, err)
 		}
 		return err
 	}
@@ -179,7 +178,12 @@ func (api *>>>API_NAME<<<) setWithCache(ctx context.Context, path string, data i
 			if err := api.set(ctx, path, data, entry.Body, handlerErrors); err != nil {
 				return err
 			}
-			api.cache.Put(cacheKey, entry)
+			ttl := cache.TTL(ctx)
+			if p, ok := api.cache.(cache.TTLAwareCachePutter); ok && ttl > 0 {
+				p.PutWithTTL(cacheKey, entry, ttl)
+			} else {
+				api.cache.Put(cacheKey, entry)
+			}
 			return nil
 		}
 	}

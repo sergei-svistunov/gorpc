@@ -1,6 +1,9 @@
 package cache
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type key int
 
@@ -9,7 +12,8 @@ var requestInfoKey key
 type requestInfo struct {
 	useCache bool
 	useETag  bool
-	debug    bool // if true IsETagEnabled and IsTransportCacheEnabled will return false
+	ttl      time.Duration // if ttl = 0 will be used default cache ttl
+	debug    bool          // if true IsETagEnabled and IsTransportCacheEnabled will return false
 }
 
 func NewContext(parent context.Context) context.Context {
@@ -130,6 +134,37 @@ func NewContextWithoutDebug(parent context.Context) context.Context {
 		info = *c
 	}
 	info.debug = false
+	return newContext(parent, &info)
+}
+
+func TTL(ctx context.Context) time.Duration {
+	if info, ok := fromContext(ctx); ok {
+		return info.ttl
+	}
+	return time.Duration(0)
+}
+
+func SetTTL(ctx context.Context, ttl time.Duration) {
+	if info, ok := fromContext(ctx); ok {
+		info.ttl = ttl
+	}
+}
+
+func NewContextWithTTL(parent context.Context, ttl time.Duration) context.Context {
+	var info requestInfo
+	if c, ok := fromContext(parent); ok {
+		info = *c
+	}
+	info.ttl = ttl
+	return newContext(parent, &info)
+}
+
+func NewContextWithoutTTL(parent context.Context) context.Context {
+	var info requestInfo
+	if c, ok := fromContext(parent); ok {
+		info = *c
+	}
+	info.ttl = time.Duration(0)
 	return newContext(parent, &info)
 }
 

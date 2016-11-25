@@ -234,7 +234,12 @@ func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSession
 		if cache.IsETagEnabled(ctx) {
 			cacheEntry.Hash, _ = cache.ETagHash(cacheEntry.Content)
 		}
-		h.cache.Put(cacheKey, cacheEntry)
+		ttl := cache.TTL(ctx)
+		if p, ok := h.cache.(cache.TTLAwareCachePutter); ok && ttl > 0 {
+			p.PutWithTTL(cacheKey, cacheEntry, ttl)
+		} else {
+			h.cache.Put(cacheKey, cacheEntry)
+		}
 	}
 	return
 }
