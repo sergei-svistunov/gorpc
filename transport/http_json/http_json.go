@@ -62,12 +62,12 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	startTime := time.Now()
 
 	var (
-		ctx   context.Context
-		close context.CancelFunc
+		ctx    context.Context
+		cancel context.CancelFunc
 	)
 	if h.timeout > 0 {
-		ctx, close = context.WithTimeout(context.Background(), h.timeout)
-		defer close()
+		ctx, cancel = context.WithTimeout(context.Background(), h.timeout)
+		defer cancel()
 	} else {
 		ctx = context.Background()
 	}
@@ -84,17 +84,6 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer func() {
 		if h.callbacks.OnEndServing != nil {
 			h.callbacks.OnEndServing(ctx, req, startTime)
-		}
-
-		if r := recover(); r != nil {
-			trace := make([]byte, 16*1024)
-			n := runtime.Stack(trace, false)
-			trace = trace[:n]
-
-			if h.callbacks.OnPanic != nil {
-				h.callbacks.OnPanic(ctx, w, r, trace, req)
-			}
-			h.writeInternalError(ctx, w, fmt.Sprintf("%#v", r)+"\n\n"+string(trace))
 		}
 	}()
 
@@ -132,7 +121,22 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var cacheEntry *cache.CacheEntry
 
 	go func() {
-		defer func() { done <- true }()
+		defer func() {
+			if r := recover(); r != nil {
+				trace := make([]byte, 16*1024)
+				n := runtime.Stack(trace, false)
+				trace = trace[:n]
+
+				if h.callbacks.OnPanic != nil {
+					h.callbacks.OnPanic(ctx, w, r, trace, req)
+				}
+				err = &gorpc.CallHandlerError{
+					Type: gorpc.ErrorPanic,
+					Err:  fmt.Errorf("%#v\n\n%s", r, trace),
+				}
+			}
+			done <- true
+		}()
 		cacheEntry, err = h.callHandlerWithCache(ctx, &resp, req, handler, params)
 	}()
 
@@ -147,7 +151,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if err != nil {
-		if h.callbacks.OnError != nil {
+		if err.Type != gorpc.ErrorPanic && h.callbacks.OnError != nil {
 			h.callbacks.OnError(ctx, w, req, nil, err)
 		}
 		switch err.Type {
