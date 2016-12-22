@@ -7,7 +7,7 @@ import (
 	"github.com/sergei-svistunov/gorpc"
 	"github.com/sergei-svistunov/gorpc/test/handler1"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 func TestJsonParametersGetter(t *testing.T) {

@@ -91,10 +91,11 @@ type SecurityDefinitions map[string]*SecurityScheme
 
 // SecurityScheme security scheme
 type SecurityScheme struct {
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-	Name        string `json:"name"`
-	In          string `json:"in"`
+	Type        string   `json:"type"`
+	Description string   `json:"description,omitempty"`
+	Name        string   `json:"name"`
+	In          string   `json:"in"`
+	Xtensions   []string `json:"x-extensions,omitempty"`
 }
 
 // SwaggerJSONCallbacks is struct for callbacks describing

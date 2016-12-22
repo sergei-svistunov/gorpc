@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-	"golang.org/x/net/context"
+	"context"
 
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
 	test_handler_foreign_arguments "github.com/sergei-svistunov/gorpc/test/handler_foreign_arguments"

@@ -16,7 +16,7 @@ import (
 	"github.com/sergei-svistunov/gorpc"
 	"github.com/sergei-svistunov/gorpc/debug"
 	"github.com/sergei-svistunov/gorpc/transport/cache"
-	"golang.org/x/net/context"
+	"context"
 )
 
 var PrintDebug = false

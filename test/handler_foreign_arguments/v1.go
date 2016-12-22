@@ -2,7 +2,7 @@ package handler_foreign_arguments
 
 import (
 	args "github.com/sergei-svistunov/gorpc/test/handler_foreign_arguments/args"
-	"golang.org/x/net/context"
+	"context"
 )
 
 type V1Res struct {

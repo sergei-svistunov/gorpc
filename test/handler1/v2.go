@@ -3,7 +3,7 @@ package handler1
 import (
 	"errors"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 type v2Args struct {

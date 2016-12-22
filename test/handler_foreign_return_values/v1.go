@@ -2,7 +2,7 @@ package handler_foreign_return_values
 
 import (
 	return_values "github.com/sergei-svistunov/gorpc/test/handler_foreign_return_values/return_values"
-	"golang.org/x/net/context"
+	"context"
 )
 
 type v1Args struct {
