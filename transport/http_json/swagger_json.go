@@ -22,26 +22,6 @@ type Swagger struct {
 	SecurityDefinitions SecurityDefinitions `json:"securityDefinitions,omitempty"`
 }
 
-type XAuthenticationAddition struct {
-	GuestAuthentication    LoginParams `json:"guest_auth"`
-	CustomerAuthentication LoginParams `json:"customer_auth"`
-}
-
-type LoginParams struct {
-	LoginPath                string                   `json:"login_path"`
-	RequestUsernameFieldName string                   `json:"username_field_name"`
-	RequestPasswordFieldName string                   `json:"password_field_name"`
-	Method                   string                   `json:"method"`
-	ServiceDiscoverySettings ServiceDiscoverySettings `json:"service_discovery_settings"`
-}
-
-type ServiceDiscoverySettings struct {
-	PathTemplate string `json:"path_template"` // path template example: "/lazada_api/{{venture}}/{{env}}/{{service_name}}/nodes"
-	ServiceName  string `json:"service_name"`
-	// TODO: allow to define own etcd instance
-	URI string `json:"uri,omitempty"`
-}
-
 type Info struct {
 	Version     string `json:"version"`
 	Title       string `json:"title"`
@@ -111,11 +91,11 @@ type SecurityDefinitions map[string]*SecurityScheme
 
 // SecurityScheme security scheme
 type SecurityScheme struct {
-	Type                    string                  `json:"type"`
-	Description             string                  `json:"description,omitempty"`
-	Name                    string                  `json:"name"`
-	In                      string                  `json:"in"`
-	XAuthenticationAddition XAuthenticationAddition `json:"x-auth-addon,omitempty"`
+	Type        string   `json:"type"`
+	Description string   `json:"description,omitempty"`
+	Name        string   `json:"name"`
+	In          string   `json:"in"`
+	Xtensions   []string `json:"x-extensions,omitempty"`
 }
 
 // SwaggerJSONCallbacks is struct for callbacks describing
