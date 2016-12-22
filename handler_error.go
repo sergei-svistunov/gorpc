@@ -6,6 +6,7 @@ const (
 	ErrorInvalidMethod
 	ErrorWriteResponse
 	ErrorUnknown
+	ErrorPanic
 )
 
 type HandlerError struct {
