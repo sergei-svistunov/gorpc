@@ -115,6 +115,8 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	sort.Sort(sort.IntSlice(handlerVersionsIds))
 	versions := make([]handlerVersion, len(handlerVersionsIds))
 
+	typesUsageInHandlers := make(map[reflect.Type][]string)
+
 	for i, v := range handlerVersionsIds {
 		handlerVersion := i + 1
 		if handlerVersion != v {
@@ -122,6 +124,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		}
 
 		handlerMethodPrefix := "V" + strconv.Itoa(v)
+		handlerPathWithVersion := handlerPath + "/" + handlerMethodPrefix
 		vMethodType, _ := handlerType.MethodByName(handlerMethodPrefix)
 		numIn := vMethodType.Type.NumIn()
 		if numIn != 3 && numIn != 4 {
@@ -138,7 +141,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return fmt.Errorf("Type of opts for version number %d of handler %s must be Ptr to Struct", handlerVersion, handlerPath)
 		}
 
-		err := checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), paramsType, nil)
+		err := validateStructure(handlerPtrType.PkgPath(), paramsType, handlerPathWithVersion+"(args)", typesUsageInHandlers)
 		if err != nil {
 			return fmt.Errorf("Handler '%s' version '%s' parameter: %s", handlerPath, vMethodType.Name, err)
 		}
@@ -174,7 +177,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		err = checkStructureIsInTheSamePackage(handlerPtrType.PkgPath(), version.Response, nil)
+		err = validateStructure(handlerPtrType.PkgPath(), version.Response, handlerPathWithVersion+"(response)", typesUsageInHandlers)
 		if err != nil {
 			return fmt.Errorf("Handler '%s' version '%s' return value: %s", handlerPath, vMethodType.Name, err)
 		}
@@ -219,6 +222,10 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		}
 	}
 
+	if err := checkCustomTypesInResponseResults(typesUsageInHandlers); err != nil {
+		return err
+	}
+
 	hm.handlers[handlerPath] = &handlerEntity{
 		path:          handlerPath,
 		versions:      versions,
@@ -228,30 +235,54 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	return nil
 }
 
-func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type, encountered map[reflect.Type]bool) error {
-	if encountered == nil {
-		encountered = make(map[reflect.Type]bool)
-	}
-
-	if encountered[basicType] {
+func checkCustomTypesInResponseResults(typesUsageInHandlers map[reflect.Type][]string) error {
+	if len(typesUsageInHandlers) == 0 {
 		return nil
 	}
+	foundError := false
+	errorText := "Following handlers use shared structures as args/response:"
+	for t, handlers := range typesUsageInHandlers {
+		if len(handlers) < 2 {
+			continue
+		}
+		foundError = true
+		for _, handler_path := range handlers {
+			errorText += ("\n - " + handler_path + ": " + t.String())
+		}
+	}
 
-	encountered[basicType] = true
+	if foundError {
+		return fmt.Errorf(errorText)
+	}
+	return nil
+}
+
+func validateStructure(packagePath string, basicType reflect.Type, handlerPathWithVersion string, typesUsageInHandlers map[reflect.Type][]string) error {
+	if typesUsageInHandlers == nil {
+		return fmt.Errorf("typesUsageInHandlers should not be nil")
+	}
+	if handlersList, exist := typesUsageInHandlers[basicType]; exist {
+		for _, handlerPath := range handlersList {
+			if handlerPath == handlerPathWithVersion {
+				return nil
+			}
+		}
+	}
+
 	pkgPath := basicType.PkgPath()
 
 	if basicType.Kind() == reflect.Slice || basicType.Kind() == reflect.Array {
-		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
+		return validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, typesUsageInHandlers)
 	} else if basicType.Kind() == reflect.Map {
-		if err := checkStructureIsInTheSamePackage(packagePath, basicType.Key(), encountered); err != nil {
+		if err := validateStructure(packagePath, basicType.Key(), handlerPathWithVersion, typesUsageInHandlers); err != nil {
 			return err
 		}
-		if err := checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered); err != nil {
+		if err := validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, typesUsageInHandlers); err != nil {
 			return err
 		}
 		return nil
 	} else if basicType.Kind() == reflect.Ptr {
-		return checkStructureIsInTheSamePackage(packagePath, basicType.Elem(), encountered)
+		return validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, typesUsageInHandlers)
 	} else if len(pkgPath) == 0 || isPrimitiveType(basicType) {
 		return nil
 	} else if _, exception := isSamePackagePathException[pkgPath]; exception {
@@ -259,8 +290,12 @@ func checkStructureIsInTheSamePackage(packagePath string, basicType reflect.Type
 	} else if pkgPath != packagePath {
 		return fmt.Errorf(`Structure must be fully defined in the same package. Type '%s' is not.`, basicType)
 	} else if basicType.Kind() == reflect.Struct {
+		if _, exist := typesUsageInHandlers[basicType]; !exist {
+			typesUsageInHandlers[basicType] = make([]string, 0)
+		}
+		typesUsageInHandlers[basicType] = append(typesUsageInHandlers[basicType], handlerPathWithVersion)
 		for i := 0; i < basicType.NumField(); i++ {
-			err := checkStructureIsInTheSamePackage(packagePath, basicType.Field(i).Type, encountered)
+			err := validateStructure(packagePath, basicType.Field(i).Type, handlerPathWithVersion, typesUsageInHandlers)
 			if err != nil {
 				return err
 			}

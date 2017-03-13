@@ -1,17 +1,19 @@
 package gorpc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-	"context"
-
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
+	test_handler_common_type_in_different_versions_args "github.com/sergei-svistunov/gorpc/test/handler_common_type_in_different_versions_arguments"
+	test_handler_common_type_in_different_versions "github.com/sergei-svistunov/gorpc/test/handler_common_type_in_different_versions_return_values"
 	test_handler_foreign_arguments "github.com/sergei-svistunov/gorpc/test/handler_foreign_arguments"
 	test_handler_foreign_return_values "github.com/sergei-svistunov/gorpc/test/handler_foreign_return_values"
+
+	"github.com/stretchr/testify/suite"
 )
 
 // Suite definition
@@ -35,6 +37,12 @@ func (s *HandlersManagerSuite) SetupTest() {
 	err = s.hm.RegisterHandler(test_handler_foreign_return_values.NewHandler())
 	s.Error(err)
 	s.Equal(err.Error(), fmt.Sprintf(`Handler '%s' version '%s' return value: Structure must be fully defined in the same package. Type 'return_values.V1Res' is not.`, `/test/handler_foreign_return_values`, `V1`))
+
+	err = s.hm.RegisterHandler(test_handler_common_type_in_different_versions.NewHandler())
+	s.Error(err)
+
+	err = s.hm.RegisterHandler(test_handler_common_type_in_different_versions_args.NewHandler())
+	s.Error(err)
 }
 
 func TestRunSuite(t *testing.T) {
