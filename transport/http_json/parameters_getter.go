@@ -18,10 +18,6 @@ func (p *ParametersGetter) Fork(values map[string]interface{}) interface{} {
 }
 
 func (pg *ParametersGetter) Parse() error {
-	if pg.values == nil {
-		return nil
-	}
-
 	if err := pg.Req.ParseForm(); err != nil {
 		return err
 	}
