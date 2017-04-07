@@ -132,7 +132,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				}
 				err = &gorpc.CallHandlerError{
 					Type: gorpc.ErrorPanic,
-					Err:  fmt.Errorf("%#v\n\n%s", r, trace),
+					Err:  fmt.Errorf("Panic in handler:\n%#v\n\n%s", r, string(trace)),
 				}
 			}
 			done <- true
