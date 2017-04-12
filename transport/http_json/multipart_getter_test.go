@@ -69,8 +69,6 @@ func TestMultipartGetter_Parse(t *testing.T) {
 
 	err = getter.Parse()
 	assert.NoError(t, err)
-
-	t.Log(getter.values)
 }
 
 func bench(b *testing.B, size int) {
