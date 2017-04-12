@@ -18,6 +18,10 @@ func (p *ParametersGetter) Fork(values map[string]interface{}) interface{} {
 }
 
 func (pg *ParametersGetter) Parse() error {
+	if err := pg.Req.ParseForm(); err != nil {
+		return err
+	}
+
 	return pg.parseForm()
 }
 
@@ -167,13 +171,7 @@ func (pg *ParametersGetter) getSlice(name string) []string {
 	return []string{}
 }
 
-func (pg *ParametersGetter) parseForm() (err error) {
-	if pg.values != nil {
-		return
-	}
-	if err = pg.Req.ParseForm(); err != nil {
-		return
-	}
+func (pg *ParametersGetter) parseForm() error {
 	pg.values = make(url.Values)
 	for k, vs := range pg.Req.Form {
 		name := strings.ToLower(k)
@@ -181,5 +179,6 @@ func (pg *ParametersGetter) parseForm() (err error) {
 			pg.values.Add(name, v)
 		}
 	}
-	return
+
+	return nil
 }

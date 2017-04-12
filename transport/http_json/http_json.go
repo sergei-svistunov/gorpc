@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"context"
 	"github.com/sergei-svistunov/gorpc"
 	"github.com/sergei-svistunov/gorpc/debug"
 	"github.com/sergei-svistunov/gorpc/transport/cache"
-	"context"
 )
 
 var PrintDebug = false
@@ -184,19 +184,35 @@ func (h *APIHandler) parseRequest(ctx context.Context, req *http.Request) (gorpc
 		return nil, reflect.ValueOf(nil), nil
 	}
 
-	jsonRequest := strings.HasPrefix(req.Header.Get("Content-Type"), "application/json")
-	if jsonRequest && req.Method != "POST" {
-		return nil, reflect.ValueOf(nil), &gorpc.CallHandlerError{
-			Type: gorpc.ErrorInvalidMethod,
-			Err:  errors.New(http.StatusText(http.StatusBadRequest)),
+	var paramsGetter gorpc.IHandlerParameters = &ParametersGetter{Req: req}
+
+	if strings.HasPrefix(req.Header.Get("Content-Type"), "application/json") {
+		if req.Method != "POST" {
+			return nil, reflect.ValueOf(nil), &gorpc.CallHandlerError{
+				Type: gorpc.ErrorInvalidMethod,
+				Err:  errors.New(http.StatusText(http.StatusBadRequest)),
+			}
 		}
+
+		paramsGetter = &JsonParametersGetter{Req: req.Body}
 	}
 
-	var paramsGetter gorpc.IHandlerParameters
-	if jsonRequest {
-		paramsGetter = &JsonParametersGetter{Req: req.Body}
-	} else {
-		paramsGetter = &ParametersGetter{Req: req}
+	if strings.HasPrefix(req.Header.Get("Content-Type"), "multipart/form-data") {
+		if req.Method != "POST" {
+			return nil, reflect.ValueOf(nil), &gorpc.CallHandlerError{
+				Type: gorpc.ErrorInvalidMethod,
+				Err:  errors.New(http.StatusText(http.StatusBadRequest)),
+			}
+		}
+
+		var err error
+		paramsGetter, err = NewMultipartGetter(req)
+		if err != nil {
+			return nil, reflect.ValueOf(nil), &gorpc.CallHandlerError{
+				Type: gorpc.ErrorUnknown,
+				Err:  err,
+			}
+		}
 	}
 
 	params, err := h.hm.UnmarshalParameters(ctx, handler, paramsGetter)
