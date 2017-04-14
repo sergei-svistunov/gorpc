@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -28,13 +27,22 @@ func NewMultipartGetter(req *http.Request) (*MultipartGetter, error) {
 	}, nil
 }
 
+// Add upload files to Params like a string
+// params["{inputName}"] = string(file)
+// params["filename_{inputName}"] = string(filename)
+//
+// Example:
+// type MyData struct {
+//     File     string `key:"my_file"`
+//     Filename string `key:"filename_my_file"`
+// }
 func (g *MultipartGetter) Parse() error {
 	if err := g.Req.ParseMultipartForm(multipartMaxMemorySize); err != nil {
-		return err
+		return fmt.Errorf("ParseMultipartForm %v", err)
 	}
 
 	if err := g.parseForm(); err != nil {
-		return err
+		return fmt.Errorf("parseForm %v", err)
 	}
 
 	for key, files := range g.Req.MultipartForm.File {
@@ -46,18 +54,17 @@ func (g *MultipartGetter) Parse() error {
 
 		f, err := file.Open()
 		if err != nil {
-			return err
+			return fmt.Errorf("file open %v", err)
 		}
 
 		b, err := ioutil.ReadAll(f)
 		if err != nil {
-			return err
+			return fmt.Errorf("file readall %v", err)
 		}
 
 		key = strings.ToLower(key)
-		for i := range b {
-			g.values.Add(key, strconv.FormatUint(uint64(b[i]), 10))
-		}
+		g.values.Set(key, string(b))
+		g.values.Set("filename_"+key, file.Filename)
 	}
 
 	return nil
