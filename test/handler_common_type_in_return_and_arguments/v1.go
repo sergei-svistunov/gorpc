@@ -1,4 +1,4 @@
-package handler_common_type_in_different_versions_return_values
+package handler_common_type_in_return_and_arguments
 
 import (
 	"context"
