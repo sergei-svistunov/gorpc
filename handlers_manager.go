@@ -23,6 +23,13 @@ type handlerEntity struct {
 	handlerStruct IHandler
 }
 
+// fieldUsageDetails is helping struct that used for validation
+// if different handlers (or its versions) use same structure types
+type fieldUsageDetails struct {
+	HandlerPath string
+	Role        string // just for clear error message: could be ArgumentsStructure or ResponseStructure
+}
+
 type HandlersManagerCallbacks struct {
 	// OnHandlerRegistration will be called only one time for each handler version while handler registration is in progress
 	OnHandlerRegistration func(path string, method reflect.Method) (extraData interface{})
@@ -115,7 +122,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	sort.Sort(sort.IntSlice(handlerVersionsIds))
 	versions := make([]handlerVersion, len(handlerVersionsIds))
 
-	typesUsageInHandlers := make(map[reflect.Type][]string)
+	typesUsageInHandlers := make(map[reflect.Type][]fieldUsageDetails)
 
 	for i, v := range handlerVersionsIds {
 		handlerVersion := i + 1
@@ -141,7 +148,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 			return fmt.Errorf("Type of opts for version number %d of handler %s must be Ptr to Struct", handlerVersion, handlerPath)
 		}
 
-		err := validateStructure(handlerPtrType.PkgPath(), paramsType, handlerPathWithVersion+"(args)", typesUsageInHandlers)
+		err := validateStructure(handlerPtrType.PkgPath(), paramsType, handlerPathWithVersion, "ArgumentsStructure", typesUsageInHandlers)
 		if err != nil {
 			return fmt.Errorf("Handler '%s' version '%s' parameter: %s", handlerPath, vMethodType.Name, err)
 		}
@@ -177,7 +184,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 		// TODO: check response object for unexported fields here. Move that code out of docs.go
 		version.Response = vMethodType.Type.Out(0)
 
-		err = validateStructure(handlerPtrType.PkgPath(), version.Response, handlerPathWithVersion+"(response)", typesUsageInHandlers)
+		err = validateStructure(handlerPtrType.PkgPath(), version.Response, handlerPathWithVersion, "ResponseStructure", typesUsageInHandlers)
 		if err != nil {
 			return fmt.Errorf("Handler '%s' version '%s' return value: %s", handlerPath, vMethodType.Name, err)
 		}
@@ -235,7 +242,7 @@ func (hm *HandlersManager) RegisterHandler(h IHandler) error {
 	return nil
 }
 
-func checkCustomTypesInResponseResults(typesUsageInHandlers map[reflect.Type][]string) error {
+func checkCustomTypesInResponseResults(typesUsageInHandlers map[reflect.Type][]fieldUsageDetails) error {
 	if len(typesUsageInHandlers) == 0 {
 		return nil
 	}
@@ -246,8 +253,8 @@ func checkCustomTypesInResponseResults(typesUsageInHandlers map[reflect.Type][]s
 			continue
 		}
 		foundError = true
-		for _, handler_path := range handlers {
-			errorText += ("\n - " + handler_path + ": " + t.String())
+		for _, usageDetails := range handlers {
+			errorText += ("\n - " + usageDetails.HandlerPath + "(" + usageDetails.Role + ") : " + t.String())
 		}
 	}
 
@@ -257,13 +264,13 @@ func checkCustomTypesInResponseResults(typesUsageInHandlers map[reflect.Type][]s
 	return nil
 }
 
-func validateStructure(packagePath string, basicType reflect.Type, handlerPathWithVersion string, typesUsageInHandlers map[reflect.Type][]string) error {
+func validateStructure(packagePath string, basicType reflect.Type, handlerPathWithVersion string, role string, typesUsageInHandlers map[reflect.Type][]fieldUsageDetails) error {
 	if typesUsageInHandlers == nil {
 		return fmt.Errorf("typesUsageInHandlers should not be nil")
 	}
-	if handlersList, exist := typesUsageInHandlers[basicType]; exist {
-		for _, handlerPath := range handlersList {
-			if handlerPath == handlerPathWithVersion {
+	if data, exist := typesUsageInHandlers[basicType]; exist {
+		for _, usageDetails := range data {
+			if usageDetails.HandlerPath == handlerPathWithVersion {
 				return nil
 			}
 		}
@@ -272,17 +279,17 @@ func validateStructure(packagePath string, basicType reflect.Type, handlerPathWi
 	pkgPath := basicType.PkgPath()
 
 	if basicType.Kind() == reflect.Slice || basicType.Kind() == reflect.Array {
-		return validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, typesUsageInHandlers)
+		return validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, role, typesUsageInHandlers)
 	} else if basicType.Kind() == reflect.Map {
-		if err := validateStructure(packagePath, basicType.Key(), handlerPathWithVersion, typesUsageInHandlers); err != nil {
+		if err := validateStructure(packagePath, basicType.Key(), handlerPathWithVersion, role, typesUsageInHandlers); err != nil {
 			return err
 		}
-		if err := validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, typesUsageInHandlers); err != nil {
+		if err := validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, role, typesUsageInHandlers); err != nil {
 			return err
 		}
 		return nil
 	} else if basicType.Kind() == reflect.Ptr {
-		return validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, typesUsageInHandlers)
+		return validateStructure(packagePath, basicType.Elem(), handlerPathWithVersion, role, typesUsageInHandlers)
 	} else if len(pkgPath) == 0 || isPrimitiveType(basicType) {
 		return nil
 	} else if _, exception := isSamePackagePathException[pkgPath]; exception {
@@ -291,11 +298,14 @@ func validateStructure(packagePath string, basicType reflect.Type, handlerPathWi
 		return fmt.Errorf(`Structure must be fully defined in the same package. Type '%s' is not.`, basicType)
 	} else if basicType.Kind() == reflect.Struct {
 		if _, exist := typesUsageInHandlers[basicType]; !exist {
-			typesUsageInHandlers[basicType] = make([]string, 0)
+			typesUsageInHandlers[basicType] = make([]fieldUsageDetails, 0)
 		}
-		typesUsageInHandlers[basicType] = append(typesUsageInHandlers[basicType], handlerPathWithVersion)
+		typesUsageInHandlers[basicType] = append(typesUsageInHandlers[basicType], fieldUsageDetails{
+			HandlerPath: handlerPathWithVersion,
+			Role:        role,
+		})
 		for i := 0; i < basicType.NumField(); i++ {
-			err := validateStructure(packagePath, basicType.Field(i).Type, handlerPathWithVersion, typesUsageInHandlers)
+			err := validateStructure(packagePath, basicType.Field(i).Type, handlerPathWithVersion, role, typesUsageInHandlers)
 			if err != nil {
 				return err
 			}

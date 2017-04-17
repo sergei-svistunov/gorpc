@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"testing"
 
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
 	test_handler_common_type_in_different_versions_args "github.com/sergei-svistunov/gorpc/test/handler_common_type_in_different_versions_arguments"
 	test_handler_common_type_in_different_versions "github.com/sergei-svistunov/gorpc/test/handler_common_type_in_different_versions_return_values"
+	test_handler_common_type_in_return_and_arguments "github.com/sergei-svistunov/gorpc/test/handler_common_type_in_return_and_arguments"
 	test_handler_foreign_arguments "github.com/sergei-svistunov/gorpc/test/handler_foreign_arguments"
 	test_handler_foreign_return_values "github.com/sergei-svistunov/gorpc/test/handler_foreign_return_values"
 
@@ -43,6 +45,9 @@ func (s *HandlersManagerSuite) SetupTest() {
 
 	err = s.hm.RegisterHandler(test_handler_common_type_in_different_versions_args.NewHandler())
 	s.Error(err)
+
+	err = s.hm.RegisterHandler(test_handler_common_type_in_return_and_arguments.NewHandler())
+	s.Nil(err)
 }
 
 func TestRunSuite(t *testing.T) {
@@ -51,7 +56,13 @@ func TestRunSuite(t *testing.T) {
 
 // Tests
 func (s *HandlersManagerSuite) TestHandlerManager_CheckHandlersPaths() {
-	s.Equal([]string{"/test/handler1"}, s.hm.GetHandlersPaths())
+	var expectedHandlersList = []string{"/test/handler1", "/test/handler_common_type_in_return_and_arguments"}
+	var existHandlersList = s.hm.GetHandlersPaths()
+
+	sort.Strings(expectedHandlersList)
+	sort.Strings(existHandlersList)
+
+	s.Equal(expectedHandlersList, existHandlersList)
 }
 
 func (s *HandlersManagerSuite) TestHandlerManager_FindExistsHandler() {
