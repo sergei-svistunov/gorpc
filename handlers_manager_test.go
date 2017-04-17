@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"testing"
 
 	test_handler1 "github.com/sergei-svistunov/gorpc/test/handler1"
@@ -55,7 +56,13 @@ func TestRunSuite(t *testing.T) {
 
 // Tests
 func (s *HandlersManagerSuite) TestHandlerManager_CheckHandlersPaths() {
-	s.Equal([]string{"/test/handler1", "/test/handler_common_type_in_return_and_arguments"}, s.hm.GetHandlersPaths())
+	var expectedHandlersList = []string{"/test/handler1", "/test/handler_common_type_in_return_and_arguments"}
+	var existHandlersList = s.hm.GetHandlersPaths()
+
+	sort.Strings(expectedHandlersList)
+	sort.Strings(existHandlersList)
+
+	s.Equal(expectedHandlersList, existHandlersList)
 }
 
 func (s *HandlersManagerSuite) TestHandlerManager_FindExistsHandler() {
