@@ -157,6 +157,9 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		switch err.Type {
 		case gorpc.ErrorInParameters:
 			h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
+		case gorpc.ErrorReturnedFromCall:
+			// handle ErrorReturnedFromCall (business error returned from handler) as successful result
+			h.writeResponse(ctx, cacheEntry, &resp, w, req, startTime)
 		default:
 			h.writeInternalError(ctx, w, err.Error())
 		}
@@ -274,7 +277,11 @@ func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *htt
 			resp.Result = "ERROR"
 			resp.Data = err.UserMessage()
 			resp.Error = err.ErrorCode()
-			return h.createCacheEntry(ctx, resp, nil, req)
+			c, cacheErr := h.createCacheEntry(ctx, resp, nil, req)
+			if cacheErr != nil {
+				return nil, cacheErr
+			}
+			return c, err
 		}
 		return nil, err
 	}
