@@ -368,12 +368,14 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 		_, err = w.Write(cacheEntry.Content)
 	}
 
-	if err != nil && h.callbacks.OnError != nil {
-		handlerError := &gorpc.CallHandlerError{
-			Type: gorpc.ErrorWriteResponse,
-			Err:  err,
+	if err != nil {
+		if h.callbacks.OnError != nil {
+			handlerError := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorWriteResponse,
+				Err:  err,
+			}
+			h.callbacks.OnError(ctx, w, req, resp, handlerError)
 		}
-		h.callbacks.OnError(ctx, w, req, resp, handlerError)
 		return
 	}
 
@@ -396,12 +398,14 @@ func (h *APIHandler) writeBusinessError(ctx context.Context, resp *HttpSessionRe
 	if err == nil {
 		_, err = w.Write(data)
 	}
-	if err != nil && h.callbacks.OnError != nil {
-		handlerError := &gorpc.CallHandlerError{
-			Type: gorpc.ErrorWriteResponse,
-			Err:  err,
+	if err != nil {
+		if h.callbacks.OnError != nil {
+			handlerError := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorWriteResponse,
+				Err:  err,
+			}
+			h.callbacks.OnError(ctx, w, req, resp, handlerError)
 		}
-		h.callbacks.OnError(ctx, w, req, resp, handlerError)
 		return
 	}
 
