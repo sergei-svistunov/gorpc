@@ -22,7 +22,7 @@ import (
 var PrintDebug = false
 
 //easyjson:json
-type httpSessionResponse struct {
+type HttpSessionResponse struct {
 	Result string       `json:"result"`
 	Data   interface{}  `json:"data"`
 	Error  string       `json:"error"`
@@ -99,7 +99,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var resp httpSessionResponse
+	var resp HttpSessionResponse
 
 	handler, params, err := h.parseRequest(ctx, req)
 	if err != nil {
@@ -152,14 +152,14 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	if err != nil {
 		if err.Type != gorpc.ErrorPanic && h.callbacks.OnError != nil {
-			h.callbacks.OnError(ctx, w, req, nil, err)
+			h.callbacks.OnError(ctx, w, req, &resp, err)
 		}
 		switch err.Type {
 		case gorpc.ErrorInParameters:
 			h.writeError(ctx, w, err.UserMessage(), http.StatusBadRequest)
 		case gorpc.ErrorReturnedFromCall:
 			// handle ErrorReturnedFromCall (business error returned from handler) as successful result
-			h.writeResponse(ctx, cacheEntry, &resp, w, req, startTime)
+			h.writeBusinessError(ctx, &resp, w, req, startTime)
 		default:
 			h.writeInternalError(ctx, w, err.Error())
 		}
@@ -228,7 +228,7 @@ func (h *APIHandler) parseRequest(ctx context.Context, req *http.Request) (gorpc
 	return handler, params, nil
 }
 
-func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (cacheEntry *cache.CacheEntry, err *gorpc.CallHandlerError) {
+func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *HttpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (cacheEntry *cache.CacheEntry, err *gorpc.CallHandlerError) {
 	cacheKey := h.getCacheKey(ctx, req, handler, params)
 	if cacheKey == nil || cache.IsDebug(ctx) {
 		return h.callHandler(ctx, cacheKey, resp, req, handler, params)
@@ -267,7 +267,7 @@ func (h *APIHandler) callHandlerWithCache(ctx context.Context, resp *httpSession
 	return
 }
 
-func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *httpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (*cache.CacheEntry, *gorpc.CallHandlerError) {
+func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *HttpSessionResponse, req *http.Request, handler gorpc.HandlerVersion, params reflect.Value) (*cache.CacheEntry, *gorpc.CallHandlerError) {
 	if h.IsDebug(req) {
 		ctx = context.WithValue(ctx, debug.DebugContextKey, debug.NewDebug())
 	}
@@ -277,11 +277,7 @@ func (h *APIHandler) callHandler(ctx context.Context, cacheKey []byte, resp *htt
 			resp.Result = "ERROR"
 			resp.Data = err.UserMessage()
 			resp.Error = err.ErrorCode()
-			c, cacheErr := h.createCacheEntry(ctx, resp, nil, req)
-			if cacheErr != nil {
-				return nil, cacheErr
-			}
-			return c, err
+			return nil, err
 		}
 		return nil, err
 	}
@@ -315,7 +311,7 @@ func (h *APIHandler) getCacheKey(ctx context.Context, req *http.Request, handler
 	return buf.Bytes()
 }
 
-func (h *APIHandler) createCacheEntry(ctx context.Context, resp *httpSessionResponse, cacheKey []byte, req *http.Request) (*cache.CacheEntry, *gorpc.CallHandlerError) {
+func (h *APIHandler) createCacheEntry(ctx context.Context, resp *HttpSessionResponse, cacheKey []byte, req *http.Request) (*cache.CacheEntry, *gorpc.CallHandlerError) {
 	content, err := resp.MarshalJSON()
 	if err != nil {
 		return nil, &gorpc.CallHandlerError{
@@ -337,7 +333,7 @@ func (h *APIHandler) createCacheEntry(ctx context.Context, resp *httpSessionResp
 	return &cacheEntry, nil
 }
 
-func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheEntry, resp *httpSessionResponse,
+func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheEntry, resp *HttpSessionResponse,
 	w http.ResponseWriter, req *http.Request, startTime time.Time) {
 
 	if h.callbacks.OnBeforeWriteResponse != nil {
@@ -372,12 +368,44 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 		_, err = w.Write(cacheEntry.Content)
 	}
 
-	if err != nil && h.callbacks.OnError != nil {
-		handlerError := &gorpc.CallHandlerError{
-			Type: gorpc.ErrorWriteResponse,
-			Err:  err,
+	if err != nil {
+		if h.callbacks.OnError != nil {
+			handlerError := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorWriteResponse,
+				Err:  err,
+			}
+			h.callbacks.OnError(ctx, w, req, resp, handlerError)
 		}
-		h.callbacks.OnError(ctx, w, req, resp, handlerError)
+		return
+	}
+
+	if h.callbacks.OnSuccess != nil {
+		h.callbacks.OnSuccess(ctx, req, resp, startTime)
+	}
+}
+
+func (h *APIHandler) writeBusinessError(ctx context.Context, resp *HttpSessionResponse,
+	w http.ResponseWriter, req *http.Request, startTime time.Time) {
+
+	if h.callbacks.OnBeforeWriteResponse != nil {
+		h.callbacks.OnBeforeWriteResponse(ctx, w)
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	data, err := resp.MarshalJSON()
+	if err == nil {
+		_, err = w.Write(data)
+	}
+	if err != nil {
+		if h.callbacks.OnError != nil {
+			handlerError := &gorpc.CallHandlerError{
+				Type: gorpc.ErrorWriteResponse,
+				Err:  err,
+			}
+			h.callbacks.OnError(ctx, w, req, resp, handlerError)
+		}
 		return
 	}
 
