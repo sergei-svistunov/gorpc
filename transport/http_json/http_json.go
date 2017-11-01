@@ -66,10 +66,10 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		cancel context.CancelFunc
 	)
 	if h.timeout > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), h.timeout)
+		ctx, cancel = context.WithTimeout(req.Context(), h.timeout)
 		defer cancel()
 	} else {
-		ctx = context.Background()
+		ctx = req.Context()
 	}
 
 	ctx = cache.NewContext(ctx)
