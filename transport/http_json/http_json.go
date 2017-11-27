@@ -37,6 +37,7 @@ type APIHandlerCallbacks struct {
 	OnEndServing          func(ctx context.Context, req *http.Request, startTime time.Time)
 	OnBeforeWriteResponse func(ctx context.Context, w http.ResponseWriter)
 	OnSuccess             func(ctx context.Context, req *http.Request, handlerResponse interface{}, startTime time.Time)
+	On304                 func(ctx context.Context, req *http.Request)
 	On404                 func(ctx context.Context, req *http.Request)
 	OnCacheHit            func(ctx context.Context, entry *cache.CacheEntry)
 	OnCacheMiss           func(ctx context.Context)
@@ -344,6 +345,9 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 		w.Header().Set("Etag", cacheEntry.Hash)
 		if cacheEntry.Hash == req.Header.Get("If-None-Match") {
 			w.WriteHeader(http.StatusNotModified)
+			if h.callbacks.On304 != nil {
+				h.callbacks.On304(ctx, req)
+			}
 			if h.callbacks.OnSuccess != nil {
 				h.callbacks.OnSuccess(ctx, req, resp, startTime)
 			}
