@@ -32,7 +32,7 @@ func TestJsonParametersGetter(t *testing.T) {
 		t.Fatal("'nested.b' not found")
 	}
 	if v, err := p.GetBool([]string{"nested"}, "b"); err != nil || v != true {
-		t.Fatalf("'nested.b'(%z) != true, error: %v", v, err)
+		t.Fatalf("'nested.b'(%v) != true, error: %v", v, err)
 	}
 	if v, err := p.GetInt([]string{"slice_in_slice", "0"}, "1"); err != nil || v != 2 {
 		t.Fatalf("'slice_in_slice[0][1]'(%d) != 2, error: %v", v, err)
