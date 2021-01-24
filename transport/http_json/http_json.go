@@ -3,6 +3,7 @@ package http_json
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"context"
 	"github.com/sergei-svistunov/gorpc"
 	"github.com/sergei-svistunov/gorpc/debug"
 	"github.com/sergei-svistunov/gorpc/transport/cache"
@@ -341,7 +341,7 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 		h.callbacks.OnBeforeWriteResponse(ctx, w)
 	}
 
-	if cacheEntry.Hash != "" {
+	if cacheEntry != nil && cacheEntry.Hash != "" {
 		w.Header().Set("Etag", cacheEntry.Hash)
 		if cacheEntry.Hash == req.Header.Get("If-None-Match") {
 			w.WriteHeader(http.StatusNotModified)
@@ -359,17 +359,19 @@ func (h *APIHandler) writeResponse(ctx context.Context, cacheEntry *cache.CacheE
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	var err error
-	if cacheEntry.CompressedContent != nil && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
-		w.Header().Set("Content-Encoding", "gzip")
-		_, err = w.Write(cacheEntry.CompressedContent)
-	} else if cacheEntry.Content == nil && cacheEntry.CompressedContent != nil {
-		//cacheEntry.Content might be empty when client does not accept gzip encoding
-		//so we need to decompress Compressed Content
-		gzipReader, _ := gzip.NewReader(bytes.NewReader(cacheEntry.CompressedContent))
-		io.Copy(w, gzipReader)
-		gzipReader.Close()
-	} else {
-		_, err = w.Write(cacheEntry.Content)
+	if cacheEntry != nil {
+		if cacheEntry.CompressedContent != nil && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			_, err = w.Write(cacheEntry.CompressedContent)
+		} else if cacheEntry.Content == nil && cacheEntry.CompressedContent != nil {
+			//cacheEntry.Content might be empty when client does not accept gzip encoding
+			//so we need to decompress Compressed Content
+			gzipReader, _ := gzip.NewReader(bytes.NewReader(cacheEntry.CompressedContent))
+			_, _ = io.Copy(w, gzipReader)
+			_ = gzipReader.Close()
+		} else {
+			_, err = w.Write(cacheEntry.Content)
+		}
 	}
 
 	if err != nil {
